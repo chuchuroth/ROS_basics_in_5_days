@@ -1,0 +1,4 @@
+<launch>
+  <node name="find_wall" pkg="wall_following" type="find_wall.py" output="screen"/>
+  <node name="wall_follower" pkg="wall_following" type="wall_follower.py" output="screen"/>
+</launch>
