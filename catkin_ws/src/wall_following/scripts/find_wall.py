@@ -2,7 +2,7 @@
 import rospy
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
-from wall_following.srv import FindWall, FindWallResponse
+from ros_wall_following.srv import FindWall, FindWallResponse
 
 class FindWallServer:
     def __init__(self):

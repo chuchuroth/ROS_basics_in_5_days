@@ -1,0 +1,8 @@
+<launch>
+  <node name="record_odom_server" pkg="ros_wall_following" type="record_odom_server.py" output="screen"/>
+  <node name="find_wall" pkg="ros_wall_following" type="find_wall.py" output="screen"/>
+  <node name="wall_follower" pkg="ros_wall_following" type="wall_follower.py" output="screen"/>
+  <param name="use_sim_time" value="true"/>
+</launch>
+
+

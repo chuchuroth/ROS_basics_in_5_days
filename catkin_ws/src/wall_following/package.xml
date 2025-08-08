@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>wall_following</name>
+  <name>ros_wall_following</name>
   <version>0.0.1</version>
-  <description>Wall following and wall finding behaviors for a virtual robot.</description>
+  <description>Wall following, wall finding, and odometry recording behaviors for a virtual robot</description>
 
   <maintainer email="you@example.com">Your Name</maintainer>
   <license>MIT</license>
@@ -10,6 +10,7 @@
   <!-- Build dependencies -->
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>message_generation</build_depend>
+  <build_depend>actionlib_msgs</build_depend>
 
   <!-- Run dependencies -->
   <exec_depend>rospy</exec_depend>
@@ -26,9 +27,14 @@
   <exec_depend>std_srvs</exec_depend>
   <build_depend>message_runtime</build_depend>
   <exec_depend>message_runtime</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+ <exec_depend>actionlib</exec_depend>
+ <build_depend>actionlib_msgs</build_depend>
+ <exec_depend>actionlib_msgs</exec_depend>
 
 
 
   <export>
   </export>
 </package>
+
