@@ -1,41 +1,17 @@
-# \## this repo is just for storing codes examples, all packages are not properly configured
+# this repo is just for storing examples, all packages are not properly configured, names in launch files are not correct
 
 
 
 
 
-topic vs service vs action 
+**topic vs service vs action example**
 
-
-
-laser: Topic to publish information, available all the time
-
-
-
-Face-recognition: Service
-
-call that service and WAIT: who is this person?
-
-
-
-navigation system : Action
-
-\+ ROS Actions are ideal for long-running tasks that can be interrupted, like moving to a position or performing complex calculations.
-
-\+ They allow you to monitor the progress of a task, which isn’t possible with simple topics or services.
-
-\+ Implementing action servers and action clients will give your robot more flexibility and control over its tasks.
-
-
-
-
-
-
-
-group each function into one ros node.
-
-use service or action mechanism, service and action provide specified structure to make the communication between each nodes more modular and efficient
-
++ laser: Topic to publish information, available all the time
++ Face-recognition: Service - call that service and WAIT: who is this person?
++ navigation system : Action
+1. ROS Actions are ideal for long-running tasks that can be interrupted, like moving to a position or performing complex calculations.
+2. They allow you to monitor the progress of a task, which isn’t possible with simple topics or services.
+3. Implementing action servers and action clients will give your robot more flexibility and control over its tasks.
 
 
 
@@ -44,11 +20,7 @@ rosrun rviz rviz    # to know what the Robot was perceiving: In Global Options, 
 
 
 
-
-
 catkin\_create\_pkg my\_example\_pkg rospy std\_msgs    
-
-
 
 rosservice list /the\_service\_name
 
