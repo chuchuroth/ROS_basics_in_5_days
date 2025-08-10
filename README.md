@@ -14,7 +14,7 @@
 3. Implementing action servers and action clients will give your robot more flexibility and control over its tasks.
 
 
-
+```
 
 rosrun rviz rviz    # to know what the Robot was perceiving: In Global Options, select the Fixed Frame that suits you for the visualization of the data and The Add button
 
@@ -64,3 +64,4 @@ rosbag info name\_bag\_file.bag     # extract
 
 rosbag play name\_bag\_file.bag  \&\& rostopic echo /laser\_scan/ranges\[100] \&\& rqt\_plot /laser\_scan/ranges\[100]    # replay
 
+```
