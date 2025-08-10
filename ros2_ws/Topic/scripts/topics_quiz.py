@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 
+
+# Several ROS 2 libraries (rclpy, sensor_msgs, geometry_msgs, etc.) are imported, along with utility libraries (math, tf_transformations).
+# The AutonomousExplorationNode class extends ROS's Node class, making it a ROS 2 node capable of handling topics, subscribers, and publishers.
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
@@ -9,6 +12,17 @@ from std_msgs.msg import String
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 import math
 import tf_transformations
+
+# The node is initialized with the name 'topics_quiz_node'.
+# Subscribers:
+# Listens to laser scan data (/laser_scan) to detect obstacles using the laserscan_callback method.
+# Listens to odometry data (/odom) to track the robot's position and orientation using the odom_callback.
+# Listens for mission commands (/nasa_mission) to decide where to move the robot using the mission_callback.
+# Publishers:
+# Sends movement commands to the robot using the /cmd_vel topic.
+# Publishes the status of the robot (e.g., "goal-reached") to the mars_rover_status topic.
+# State Variables:
+# Variables like current_goal, current_position, yaw, mission_active are initialized to track the robot's state.
 
 class AutonomousExplorationNode(Node):
     def __init__(self):
@@ -54,7 +68,11 @@ class AutonomousExplorationNode(Node):
         self.pickup_position = {'x': -2.342, 'y': 2.432}
 
         self.get_logger().info("Autonomous Exploration Node Ready...")
-
+        
+# Sector Definitions: The robot's laser scanner divides its surroundings into four sectors: "Front_Left", "Front_Right", "Left", and "Right".
+# Obstacle Detection: It calculates the minimum distance to an obstacle in each sector. If the robot detects obstacles within a certain distance (0.8 meters), it flags them.
+# mission Handling: If a mission is active and there's a goal, the robot navigates to the goal while avoiding obstacles.
+    
     def laserscan_callback(self, msg):
         # Define sectors and minimum distances for obstacle detection
         sectors = {
@@ -78,6 +96,9 @@ class AutonomousExplorationNode(Node):
         if self.mission_active and self.current_goal:
             self.navigate_to_goal(detections)
 
+# This callback updates the robot's current position and orientation (yaw) based on odometry data.
+# It checks if the robot has reached its current goal by calculating the distance to the goal. If the distance is within a small tolerance, the robot stops.
+
     def odom_callback(self, msg):
         # Update the current position and yaw from odometry
         self.current_position['x'] = msg.pose.pose.position.x
@@ -99,6 +120,9 @@ class AutonomousExplorationNode(Node):
                 self.current_goal = None
                 self.get_logger().info("Goal reached. Robot stopped.")
                 self.status_publisher_.publish(String(data='goal-reached'))
+
+# The robot listens for commands like "Go-Home" or "Go-Pickup". When it receives a command, it checks if it's already at the requested location.
+# If not, it sets a new goal (home or pickup position) and activates the mission.
 
     def mission_callback(self, msg):
         # Handle mission commands
@@ -131,6 +155,15 @@ class AutonomousExplorationNode(Node):
             (self.current_position['y'] - target_position['y'])**2
         )
         return distance_to_target < self.goal_tolerance
+
+# The robot calculates the direction (yaw) to its current goal.
+# Current Yaw: The robot’s current yaw (orientation) is calculated from the odometry data (quaternion converted to Euler angles).
+# Desired Yaw: The desired yaw is calculated using the atan2() function, which computes the angle between the robot’s current position and the goal position.
+# Yaw Error: The difference between the current yaw and the desired yaw is calculated and normalized to ensure smooth turning.
+# Turning the Robot: Based on the yaw error, the robot adjusts its angular velocity to turn towards the goal while moving forward.
+# If obstacles are detected in certain sectors, it adjusts the robot's movement to avoid them.
+# If there are no obstacles, the robot proceeds towards its goal.
+
 
     def navigate_to_goal(self, detections):
         # Calculate the desired yaw to the goal
@@ -177,6 +210,8 @@ class AutonomousExplorationNode(Node):
         # Publish the movement command
         self.publisher_.publish(action)
 
+# When the robot reaches its goal or needs to stop for any other reason, this method publishes zero velocities to halt its movement.
+
     def stop_robot(self):
         """Stop the robot by publishing zero velocities."""
         stop_msg = Twist()
@@ -184,6 +219,10 @@ class AutonomousExplorationNode(Node):
         stop_msg.angular.z = 0.0
         self.publisher_.publish(stop_msg)
         self.get_logger().info("Robot stopped.")
+
+# Initializes the ROS 2 environment and the AutonomousExplorationNode.
+# Initially checks if the robot is at home or pickup. If not, it sets the home position as the goal.
+# The node spins continuously, listening for callbacks and executing missions until ROS is shut down.
 
 def main(args=None):
     rclpy.init(args=args)
@@ -201,3 +240,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
