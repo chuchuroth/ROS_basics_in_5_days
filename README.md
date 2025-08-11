@@ -65,3 +65,13 @@ rosbag info name\_bag\_file.bag     # extract
 rosbag play name\_bag\_file.bag  \&\& rostopic echo /laser\_scan/ranges\[100] \&\& rqt\_plot /laser\_scan/ranges\[100]    # replay
 
 ```
+
+
+---
+
+ROS2
+
+Modify the setup.py File to Execute Your Python File: entry point…
+Modify setup.py to find the .launch.py files : data_files..
+
+node is designed to handle a specific function or capability of the robot, eg. One node for controlling wheel motors, One node for managing a laser rangefinder, One node for face recognition… a 'entry point' can start one or more nodes.
