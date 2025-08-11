@@ -3,7 +3,6 @@
 
 
 
-
 **topic vs service vs action example**
 
 + laser: Topic to publish information, available all the time
@@ -70,6 +69,8 @@ rosbag play name\_bag\_file.bag  \&\& rostopic echo /laser\_scan/ranges\[100] \&
 ---
 
 ROS2
+
+split project into two parts: one for service interface which is compiled using cmake, the other is main package compiled using python
 
 Modify the setup.py File to Execute Your Python File: entry point…
 Modify setup.py to find the .launch.py files : data_files..
