@@ -70,7 +70,9 @@ rosbag play name\_bag\_file.bag  \&\& rostopic echo /laser\_scan/ranges\[100] \&
 
 ROS2
 
-split project into two parts: one for service interface which is compiled using cmake, the other is main package compiled using python
+split project into two parts: one for service interface which is compiled using cmake, the other is main package compiled using python, because conflict between Python and CMake builds. Let's split this into two packages:
+wall_follower_interfaces for the ROS2 interfaces (using CMake)
+wall_follower for the Python nodes
 
 Modify the setup.py File to Execute Your Python File: entry point…
 Modify setup.py to find the .launch.py files : data_files..
