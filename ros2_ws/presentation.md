@@ -492,6 +492,7 @@ check the exact topic name for laser data
 
 ```
 source /home/user/simulation_ws/devel/setup.bash && roslaunch realrobotlab main.launch
+rosrun teleop_twist_keyboard teleop_twist_keyboard.py
 
 # ros2
 rm -rf build/ install/ log/
