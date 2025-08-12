@@ -508,7 +508,7 @@ ros2 interface list | grep <interface package>
 
 # ros1
 
-catkin_make && source devel/setup.bash && roslaunch ros_wall_following wall_following.launch
+catkin_make && source devel/setup.bash && roslaunch ros_wall_following main.launch
 rosrun ros_wall_following odom_result_client.py
 rostopic echo /scan
 rostopic echo /cmd_vel
