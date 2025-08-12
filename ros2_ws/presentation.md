@@ -504,6 +504,8 @@ ros2 service list | grep find_wall
 ros2 interface list | grep <interface package>
 
 # ros1
+
+catkin_make && source devel/setup.bash && roslaunch ros_wall_following wall_following.launch
 rostopic echo /scan
 rostopic echo /cmd_vel
 rosservice call /find_wall
