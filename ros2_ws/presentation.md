@@ -491,6 +491,8 @@ check the exact topic name for laser data
 
 
 ```
+source /home/user/simulation_ws/devel/setup.bash && roslaunch realrobotlab main.launch
+
 # ros2
 rm -rf build/ install/ log/
 colcon build --packages-select wall_follower && source install/setup.bash && ros2 launch wall_follower main.launch.py
