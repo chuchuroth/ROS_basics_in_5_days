@@ -495,6 +495,10 @@ source /home/user/simulation_ws/devel/setup.bash && roslaunch realrobotlab main.
 rosrun teleop_twist_keyboard teleop_twist_keyboard.py
 
 # ros2
+
+source ~/simulation_ws/install/setup.bash && ros2 launch turtlebot3_gazebo main_turtlebot3_lab.launch.xml
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
 rm -rf build/ install/ log/
 colcon build --packages-select wall_follower && source install/setup.bash && ros2 launch wall_follower main.launch.py
 
@@ -507,6 +511,8 @@ ros2 service list | grep find_wall
 ros2 interface list | grep <interface package>
 
 # ros1
+source /home/user/simulation_ws/devel/setup.bash && roslaunch realrobotlab main.launch
+rosrun teleop_twist_keyboard teleop_twist_keyboard.py
 
 catkin_make && source devel/setup.bash && roslaunch ros_wall_following main.launch
 rosrun ros_wall_following odom_result_client.py
