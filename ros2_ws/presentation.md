@@ -498,7 +498,7 @@ rosrun teleop_twist_keyboard teleop_twist_keyboard.py
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 rm -rf build/ install/ log/
-cd ros2_ws && colcon build --packages-select wall_follower && source install/setup.bash && ros2 launch wall_follower main.launch.py
+cd ros2_ws && colcon build && source install/setup.bash && ros2 launch wall_follower main.launch.py
 
 ros2 topic echo /cmd_vel
 ros2 topic echo /scan
