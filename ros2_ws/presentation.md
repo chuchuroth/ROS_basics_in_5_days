@@ -21,7 +21,8 @@ explain action server goal  feedback  reult
 Common applications of odometry include:
 + Mobile robots tracking their location as they navigate an environment.
 + Autonomous vehicles estimating their position between GPS updates.
-I +ndustrial robots verifying task progress through precise movement calculation.
++  industrial robots verifying task progress through precise movement calculation.
++ Odometry data is typically stored as a list (or array), tuple, or object containing the three values (x, y, θ) for the current pose. Each time sensors are processed, the x, y, and θ values are updated and kept in a data structure for use by the robot’s navigation system.
 
 3. rviz - add - laserscan    explain
 
