@@ -499,29 +499,24 @@ Supports both simulation and real-robot scenarios
 
 check the exact topic name for laser data
 
-
+### ros2
 ```
-
-
-
-# ros2
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
-
-rosrun actionlib_tools axclient.py /record_odom wall_following/OdomRecordAction
-
 rm -rf build/ install/ log/
 cd ros2_ws && colcon build && source install/setup.bash && ros2 launch wall_follower main.launch.py
 
 ros2 topic echo /cmd_vel
 ros2 topic echo /scan
 ros2 service list | grep find_wall
+ros2 service call /find_wall wall_follower_interfaces/srv/FindWall '{}'
+
+```
 
 
-# Test that interfaces are generated
-ros2 interface list | grep <interface package>
+
 
 # ros1
-rosrun teleop_twist_keyboard teleop_twist_keyboard.py
+```
+rosrun actionlib_tools axclient.py /record_odom wall_following/OdomRecordAction
 
 catkin_make && source devel/setup.bash && roslaunch ros_wall_following main.launch
 rosrun ros_wall_following odom_result_client.py
