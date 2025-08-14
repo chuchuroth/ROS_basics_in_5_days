@@ -76,3 +76,12 @@ rosbag info name\_bag\_file.bag     # extract
 rosbag play name\_bag\_file.bag  \&\& rostopic echo /laser\_scan/ranges\[100] \&\& rqt\_plot /laser\_scan/ranges\[100]    # replay
 
 ```
+
+
+---
+
+# ROS2
+```
+# Test that interfaces are generated
+ros2 interface list | grep <interface package>
+```
