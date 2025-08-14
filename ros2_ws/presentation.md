@@ -13,6 +13,19 @@ so let's just start with the demo and after it's done i will walk through the co
 
 next, explain the package structure and the codes
 
+finally, I'd like to introduce some pratical tools, 
+1. show action GUI - rosrun actionlib_tools axclient.py /record_odom  - explain (because server defined action is finish one lap then end action and give result... 为什么final odometry是一个list)
+explain action server goal  feedback  reult
+
++ Odometry is a technique in robotics and engineering used to estimate a robot’s change in position over time based on data from motion sensors, such as wheel encoders or inertial sensors. It allows robots (whether wheeled, legged, or otherwise) to keep track of their position relative to a starting point by measuring and integrating movements detected by these sensors
+Common applications of odometry include:
++ Mobile robots tracking their location as they navigate an environment.
++ Autonomous vehicles estimating their position between GPS updates.
+I +ndustrial robots verifying task progress through precise movement calculation.
+
+3. rviz - add - laserscan    explain
+
+
 thank you very much for your atteintion and i hope you enjoy.
 
 ---
