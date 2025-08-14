@@ -31,6 +31,12 @@ thank you very much for your atteintion and i hope you enjoy.
 
 ---
 
+## tips
++ always think about hardware config and the effects when it comes to coding
++ add tolerances 
+
+---
+
 # Wall Follower for TurtleBot3
 
 This project implements a wall follower behavior for the TurtleBot3 robot in ROS 2 Humble. The system includes three main components:
