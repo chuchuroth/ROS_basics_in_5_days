@@ -35,6 +35,7 @@ thank you very much for your atteintion and i hope you enjoy.
 + always think about hardware config and the effects when it comes to coding
 + add tolerances
 + simple algo works most of the time, so before change algo, try fine tune basic para, like speed or angle
++ avoid over-engineering
 
 ---
 
