@@ -1,5 +1,6 @@
 
 # Topic
+eg. laser: Topic to publish information, available all the time
 
 ```
 rosmsg show std\_msgs/Int32
@@ -14,6 +15,7 @@ rostopic echo /rosout  # see all the ROS logs in the current nodes running in th
 ---
 
 # Service
+eg. Face-recognition: Service - call that service and WAIT: who is this person?
 
 
 ```
@@ -33,7 +35,10 @@ rossrv list | grep MyCustomServiceMessage
 
 
 # Action
-
+eg. navigation system - Action
+1. ROS Actions are ideal for long-running tasks that can be interrupted, like moving to a position or performing complex calculations.
+2. They allow you to monitor the progress of a task, which isn’t possible with simple topics or services.
+3. Implementing action servers and action clients will give your robot more flexibility and control over its tasks.
 
 ```
 
