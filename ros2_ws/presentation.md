@@ -400,20 +400,16 @@ ros_wall_following/
 That’s it — your robot now navigates AND logs its journey like a pro!
 
 ---
-terminal:
-```
-rosrun actionlib_tools axclient.py/record_odom  wall_following/OdomRecordAction
-rosrun actionlib_tools axclient.py /record_odom wall_following/OdomRecordAction
-
-source devel/setup.bash 
 
 
 
-rosrun teleop_twist_keyboard teleop_twist_keyboard.py
 
 
 
-```
+
+
+
+
 
 
 
@@ -491,11 +487,13 @@ check the exact topic name for laser data
 
 
 ```
-source /home/user/simulation_ws/devel/setup.bash && roslaunch realrobotlab main.launch
-rosrun teleop_twist_keyboard teleop_twist_keyboard.py
+
+
 
 # ros2
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+rosrun actionlib_tools axclient.py /record_odom wall_following/OdomRecordAction
 
 rm -rf build/ install/ log/
 cd ros2_ws && colcon build && source install/setup.bash && ros2 launch wall_follower main.launch.py
