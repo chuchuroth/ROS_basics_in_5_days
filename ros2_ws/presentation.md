@@ -48,7 +48,7 @@ Common applications of odometry include:
 
 3. rviz - add - laserscan    explain
 
-
+i implement much complicated algo in ros2 rosject, one with PID, please refer to that video if you are intreested
 thank you very much for your atteintion and i hope you enjoy.
 
 ---
