@@ -16,7 +16,7 @@ demo流程
 并且我发现，根据这个课程里的gazebo环境和turtlebot机器人的尺寸，作业里设置的0.3米 0.2米并不合理，起码要0.8米，才不会一直撞墙。
 
 actually doesn't make much difference to use a simple or complicated algorithm, the limit is on the sensor side, not helping to use a complicated algorithm, but really critical to make good use of the laser data, because the critical problem to solve is to correctly calculate the distance to the wall on the right hand side, to make a smooth route, but not possible to make a perfect route, reason is follows:
-
+I use a simple bang-bang algo, you can use other advanced algo like pid or finite state machine...
 
 laser config /| 180 degree
 
