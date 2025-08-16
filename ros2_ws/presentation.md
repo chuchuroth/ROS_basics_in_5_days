@@ -589,7 +589,7 @@ Supports both simulation and real-robot scenarios
 
 check the exact topic name for laser data
 
-### ros2
+# ros2
 ```
 rm -rf build/ install/ log/
 cd ros2_ws && colcon build && source install/setup.bash && ros2 launch wall_follower main.launch.py
@@ -598,6 +598,10 @@ ros2 topic echo /cmd_vel
 ros2 topic echo /scan
 ros2 service list | grep find_wall
 ros2 service call /find_wall wall_follower_interfaces/srv/FindWall '{}'
+
+ros2 action list
+ros2 action info
+ros2 action send_goal
 
 ```
 
