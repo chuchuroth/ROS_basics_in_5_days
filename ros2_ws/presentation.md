@@ -1,5 +1,7 @@
 demo流程
 
+I've divided into two topics because I'm also doing demo for ros2 basics in 5 days, for this demo I'll focused on xxx. for the next I'll talk about xxx.
+
 + 先main launch， 如果wall finder失败，单独wall following, 或者遇到障碍物，可在键盘调整位置后直接启动wall following
 
 + 展示odom action
