@@ -603,6 +603,8 @@ ros2 action list
 ros2 action info /record_odom -t
 ros2 action send_goal
 
+ros2 action send_goal /go_to_pose leo_description/action/GoToPose "{x: -8.0, y: 6.0, yaw: 1.57}"
+
 ```
 
 
