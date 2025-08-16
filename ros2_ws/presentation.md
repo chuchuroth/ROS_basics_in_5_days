@@ -600,7 +600,7 @@ ros2 service list | grep find_wall
 ros2 service call /find_wall wall_follower_interfaces/srv/FindWall '{}'
 
 ros2 action list
-ros2 action info
+ros2 action info /record_odom -t
 ros2 action send_goal
 
 ```
