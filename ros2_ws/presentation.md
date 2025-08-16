@@ -26,7 +26,7 @@ to get correct laser configuration (based on hardware config) , better write som
 在gazego里调试完，到了robot还得重新调试，因为物理参数不一定一样（前后左右是反着的）
 
 
-hello everyone, today i am going to do a demo on robot following wall using ROS, this is a Course Project ROS Basics in 5 Days, The robot i am working with is a (TurtleBot3) which is running in Barcelona, Spain. You will connect remotely to it , behavior that makes the robot follow along the wall on its right hand side, This means that the robot must be moving forward at a 30cm distance from the wall, having the wall on its right hand side, the entire time.
+hello everyone, today i am going to do a demo on robot following wall using ROS, and share my work with you, and talk about some lessons learned. this is a Course Project ROS Basics in 5 Days, The robot i am working with is a (TurtleBot3) which is running in Barcelona, Spain. You will connect remotely to it , behavior that makes the robot follow along the wall on its right hand side, This means that the robot must be moving forward at a 30cm distance from the wall, having the wall on its right hand side, the entire time.
 so let's just start with the demo and after it's done i will walk through the codes and the file structure how they fit together and working as ros node.
 
 0. prepare the terminal: catkin_ws  source all the workspace, this is more convenient, 
