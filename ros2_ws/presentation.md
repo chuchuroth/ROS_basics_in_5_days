@@ -1,5 +1,27 @@
-key notes:
-how to use sensor data, how different calculation method affects the precision, explain 
+demo流程
+
++ 先main launch， 如果wall finder失败，单独wall following, 或者遇到障碍物，可在键盘调整位置后直接启动wall following
+
++ 展示odom action
++ rviz
++ rqt -explain structure
++ explain - robot why behave this way
+
++ __ros1用的是最简单的logic__
++ __ros2用复杂的obstacle avoidance__
+
+
+
+逻辑大多没问题，参数设计不合理，因为需要考虑场地和机器人的尺寸，还有机器人的动力学参数也是考量因素。
+并且我发现，根据这个课程里的gazebo环境和turtlebot机器人的尺寸，作业里设置的0.3米 0.2米并不合理，起码要0.8米，才不会一直撞墙。
+
+actually doesn't make much difference to use a simple or complicated algorithm, the limit is on the sensor side, not helping to use a complicated algorithm, but really critical to make good use of the laser data, because the critical problem to solve is to correctly calculate the distance to the wall on the right hand side, to make a smooth route, but not possible to make a perfect route, reason is follows:
+
+
+laser config /| 180 degree
+
+to get correct laser configuration (based on hardware config) , better write some function( add a small debug print) in scripts so in log output can show where is the problem in details, it#s easier to debug problem one by one, first you need meaningful feedback to see where went wrong
+在gazego里调试完，到了robot还得重新调试，因为物理参数不一定一样（前后左右是反着的）
 
 
 hello everyone, today i am going to do a demo on robot following wall using ROS, this is a Course Project ROS Basics in 5 Days, The robot i am working with is a (TurtleBot3) which is running in Barcelona, Spain. You will connect remotely to it , behavior that makes the robot follow along the wall on its right hand side, This means that the robot must be moving forward at a 30cm distance from the wall, having the wall on its right hand side, the entire time.
