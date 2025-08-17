@@ -633,11 +633,31 @@ ros2 action send_goal /go_to_pose leo_description/action/GoToPose "{x: -8.0, y: 
 
 # ros1
 ```
-rosrun actionlib_tools axclient.py /record_odom wall_following/OdomRecordAction
+
+
 
 catkin_make && source devel/setup.bash && roslaunch ros_wall_following main.launch
 rosrun ros_wall_following odom_result_client.py
 rostopic echo /scan
 rostopic echo /cmd_vel
 rosservice call /find_wall
+
+
+
+roscd; cd ../src
+rosbag record -O laser.bag laser_scan
+rosbag info laser.bag
+rosbag play -l laser.bag
+rostopic echo /laser_scan/ranges[100]
+rqt_plot /laser_scan/ranges[100]
+rqt_graph
+rqt_plot
+rqt_console
+
+
+rostopic echo /laser_scan/ranges[100]
+rqt_plot /laser_scan/ranges[100]
+
+rosrun actionlib_tools axclient.py /record_odom wall_following/OdomRecordAction
+rosrun rviz rviz
 ```
