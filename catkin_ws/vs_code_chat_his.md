@@ -5584,6 +5584,7 @@ Perfect! Now I've corrected the laser data extraction for TurtleBot's 180-degree
 
 
 
+
 \## Fixed TurtleBot Laser Configuration:
 
 
@@ -5647,3 +5648,4 @@ Now the robot will:
 
 
 This matches the actual TurtleBot laser configuration where the laser sweeps 180° from right to left, making the beginning of the ranges array correspond to the right side of the robot!
+
