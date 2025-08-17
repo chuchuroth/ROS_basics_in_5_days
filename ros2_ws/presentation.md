@@ -657,6 +657,6 @@ rqt_console
 rostopic echo /laser_scan/ranges[100]
 rqt_plot /laser_scan/ranges[100]
 
-rosrun actionlib_tools axclient.py /record_odom wall_following/OdomRecordAction
+rosrun actionlib_tools axclient.py /record_odom ros_wall_following/OdomRecordAction
 rosrun rviz rviz
 ```
