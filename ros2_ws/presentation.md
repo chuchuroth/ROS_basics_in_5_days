@@ -1,17 +1,3 @@
-demo流程
-
-
-
-+ 先main launch， 如果wall finder失败，单独wall following, 或者遇到障碍物，可在键盘调整位置后直接启动wall following
-
-+ 展示odom action
-+ rviz
-+ rqt -explain structure
-+ explain - robot why behave this way
-
-+ __ros1用的是最简单的logic__
-+ __ros2用复杂的obstacle avoidance__
-
 
 
 逻辑大多没问题，参数设计不合理，因为需要考虑场地和机器人的尺寸，还有机器人的动力学参数也是考量因素。
