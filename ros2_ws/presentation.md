@@ -12,7 +12,7 @@
 
 
 
-ROS2
+---
 
 split project into two parts: one for service interface which is compiled using cmake, the other is main package compiled using python, because conflict between Python and CMake builds. Let's split this into two packages:
 wall_follower_interfaces for the ROS2 interfaces (using CMake)
@@ -72,20 +72,6 @@ Uses derivative control to prevent oscillations
 ---
 
 
----
-
-
----
-
----
-
-If you’d like, I can also prepare a **demo narration script** where you can explain line-by-line what’s happening while showing the code during your presentation. That would make your audience follow along more easily.
-
-
----
-
-
----
 
 
 
@@ -95,32 +81,27 @@ If you’d like, I can also prepare a **demo narration script** where you can ex
 
 
 
-
-
-
-
-
-control logic:
-sector based  + weight
-PID
 
 
 Next Steps for Real Gazebo Integration
 To get the system working with a real TurtleBot3 in Gazebo, you would need to:
 
-Fix Gazebo Issues:
++ Fix Gazebo Issues:
 
 Determine why Gazebo is crashing on startup (possibly due to hardware requirements or conflicting processes)
 Make sure the correct environment variables are set for TurtleBot3
-Test with Real Sensors:
+
++ Test with Real Sensors:
 
 The real wall_finder.py needs to process actual LiDAR data from the /scan topic
 Ensure the robot can correctly identify and approach walls
-Parameter Tuning:
+
++ Parameter Tuning:
 
 Adjust control parameters in the wall following algorithm for smooth navigation
 Tune wall detection thresholds based on the LiDAR characteristics
-Fix Package Indexing:
+
++ Fix Package Indexing:
 
 Research why ROS 2 can't find the wall_follower package even though it's properly built and installed
 This may involve checking the ROS 2 workspace setup or ament indexing system
@@ -168,7 +149,7 @@ Supports both simulation and real-robot scenarios
 
 
 
-check the exact topic name for laser data
+
 
 # ros2
 ```
