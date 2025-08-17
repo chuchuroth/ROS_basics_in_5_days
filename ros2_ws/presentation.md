@@ -133,19 +133,13 @@ Uses derivative control to prevent oscillations
 
 # Wall Follower for TurtleBot3
 
-This project implements a wall follower behavior for the TurtleBot3 robot in ROS 2 Humble. The system includes three main components:
 
-1. **Wall Finder** - A service that detects walls using the robot's LiDAR sensor
-2. **Odometry Recorder** - An action server that records the robot's path
-3. **Wall Following** - The main node that implements the wall following behavior
 
 ## System Components
 
 ### wall_follower Package
 
-- **wall_finder.py**: Provides a service to find the nearest wall
-- **odom_recorder.py**: Action server to record odometry data
-- **wall_following.py**: Basic wall following implementation
+
 - **enhanced_wall_following.py**: Advanced wall following with improved control logic
 
 ### wall_follower_interfaces Package 
@@ -332,10 +326,9 @@ Here’s a clear, conversational walk-through of those two core files so you can
 
 ---
 
-## **1. `find_wall.py`** — The “get ready” brain
+## **1. `find_wall.py`**
 
-**Overall role:**
-This node is a **ROS service server**. When another node calls `find_wall`, it makes the robot turn toward the nearest wall, drive to it, and rotate so the wall is on the robot’s right.
+
 
 **Structure & flow:**
 
@@ -378,10 +371,9 @@ This node is a **ROS service server**. When another node calls `find_wall`, it m
 
 ---
 
-## **2. `wall_follower.py`** — The “drive along” brain
+## **2. `wall_follower.py`** 
 
-**Overall role:**
-This node controls movement once the robot is positioned next to the wall. It also starts the odometry recording action before driving.
+
 
 **Structure & flow:**
 
@@ -511,7 +503,6 @@ ros_wall_following/
    - Terminal shows live distance traveled.
    - At the end, it prints the whole route in coordinates.
 
-That’s it — your robot now navigates AND logs its journey like a pro!
 
 ---
 
@@ -557,8 +548,7 @@ The mock testing environment you now have provides a solid foundation for develo
 
 ---
 
-Key Improvements in Enhanced Wall Following
-State Machine Architecture:
+
 
 Created distinct states for different behaviors (FINDING_WALL, FOLLOWING_WALL, TURNING_CORNER)
 This allows the robot to adapt its control strategy based on its current situation
