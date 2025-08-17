@@ -22,7 +22,7 @@ I use a simple bang-bang algo, you can use other advanced algo like pid or finit
 
 laser config /| 180 degree
 
- (based on hardware config) , better write some function( add a small debug print) in scripts so in log output can show where is the problem in details, it#s easier to debug problem one by one, first you need meaningful feedback to see where went wrong
+ (based on hardware config) , better write some function( add a small debug print: for example add a small debug print at startup in both scripts so you always know how your LiDAR scan is being interpreted. It will log angle_min, angle_max, angle_increment and what direction ray 0 corresponds to.) in scripts so in log output can show where is the problem in details, it#s easier to debug problem one by one, first you need meaningful feedback to see where went wrong
 在gazego里调试完，到了robot还得重新调试，因为物理参数不一定一样（前后左右是反着的）
 
 ---
