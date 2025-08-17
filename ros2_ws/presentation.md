@@ -25,6 +25,25 @@ laser config /| 180 degree
 to get correct laser configuration (based on hardware config) , better write some function( add a small debug print) in scripts so in log output can show where is the problem in details, it#s easier to debug problem one by one, first you need meaningful feedback to see where went wrong
 在gazego里调试完，到了robot还得重新调试，因为物理参数不一定一样（前后左右是反着的）
 
+---
+
+chatgpt, help me to draft a conversational dialog for this text:
+
+
+...I think it does not really necessary to implement complicated algorithm, if our goal is very simple, so from a practical engineering point of view, you always have to keep in mind what is your goal, before you try to implement fancy algorithm, otherwise you will find that it is not really helpful, would make more sense if you tune your basic parameters like linear speed and angular speed and the ratio of them. another lesson learned is, I think it has a lot to do with the physical configuration with the robot, for instance, when i simulate in virtual environment like gazebo, or try the same code in turtlebot, the performence is quite different, and it affects the final result to a large, the result could be totally different if you try your codes in different simulation settings. parameters like inertia would makes a huge difference.
+
+
+
+only give correct results when file’s math matches the driver’s configuration.
+
+
+
+
+
+
+
+
+---
 
 hello everyone, today i am going to do a demo on robot following wall using ROS, and share my work with you, and talk about some lessons learned. this is a Course Project ROS Basics in 5 Days, The robot i am working with is a (TurtleBot3) which is running in Barcelona, Spain. You will connect remotely to it , behavior that makes the robot follow along the wall on its right hand side, This means that the robot must be moving forward at a 30cm distance from the wall, having the wall on its right hand side, the entire time.
 so let's just start with the demo and after it's done i will walk through the codes and the file structure how they fit together and working as ros node.
