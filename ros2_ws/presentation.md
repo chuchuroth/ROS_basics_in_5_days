@@ -1,6 +1,6 @@
 demo流程
 
-I've divided into two topics because I'm also doing demo for ros2 basics in 5 days, for this demo I'll focused on xxx. for the next I'll talk about xxx.
+
 
 + 先main launch， 如果wall finder失败，单独wall following, 或者遇到障碍物，可在键盘调整位置后直接启动wall following
 
@@ -22,7 +22,7 @@ I use a simple bang-bang algo, you can use other advanced algo like pid or finit
 
 laser config /| 180 degree
 
-to get correct laser configuration (based on hardware config) , better write some function( add a small debug print) in scripts so in log output can show where is the problem in details, it#s easier to debug problem one by one, first you need meaningful feedback to see where went wrong
+ (based on hardware config) , better write some function( add a small debug print) in scripts so in log output can show where is the problem in details, it#s easier to debug problem one by one, first you need meaningful feedback to see where went wrong
 在gazego里调试完，到了robot还得重新调试，因为物理参数不一定一样（前后左右是反着的）
 
 ---
@@ -45,8 +45,7 @@ only give correct results when file’s math matches the driver’s configuratio
 
 ---
 
-hello everyone, today i am going to do a demo on robot following wall using ROS, and share my work with you, and talk about some lessons learned. this is a Course Project ROS Basics in 5 Days, The robot i am working with is a (TurtleBot3) which is running in Barcelona, Spain. You will connect remotely to it , behavior that makes the robot follow along the wall on its right hand side, This means that the robot must be moving forward at a 30cm distance from the wall, having the wall on its right hand side, the entire time.
-so let's just start with the demo and after it's done i will walk through the codes and the file structure how they fit together and working as ros node.
+
 
 0. prepare the terminal: catkin_ws  source all the workspace, this is more convenient, 
 1. setup the simulator  it is provided from the instruction so i will copy it (source /home/user/simulation_ws/devel/setup.bash && roslaunch realrobotlab main.launch)
@@ -70,7 +69,7 @@ Common applications of odometry include:
 3. rviz - add - laserscan    explain
 
 i implement much complicated algo in ros2 rosject, one with PID, please refer to that video if you are intreested
-thank you very much for your atteintion and i hope you enjoy.
+
 
 ---
 
