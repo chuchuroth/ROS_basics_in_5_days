@@ -45,7 +45,7 @@ finally let's have a look at the package structure, there are four files, in ros
 
 - **odom_result_client.py** which is used to call the action server to get the data separately, to view the data in a separate terminals.
 
-let me quickly go through the codes, for more details i'll leave that to another demo, the algorithms implemented in ros2 project is more complicated than this one, which is also an interesting point, sometimes more complicated algorithms give better performance but not always the case, why is that, because software always needs to aglin with hardware configuration, and when solving real life problem the right mindset would be to keep the goal clear, what we are trying to achieve and do not overkill, because very complicated algorithms can add to complexity of the project easily but does not necessary produce better result. 
+let me quickly go through the codes, for more details i'll leave that to another demo, the algorithms implemented in ros2 project is more complicated than this one, which is also an interesting point, sometimes more complicated algorithms give better performance but not always the case, why is that, because software always needs to aglin with hardware configuration, and when solving real life problem, the right mindset would be to keep a clear goal, what we are trying to achieve and do not overkill, because very complicated algorithms can add to the complexity of the project easily but does not necessary produce better result. 
 
 
 
