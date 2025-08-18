@@ -7,6 +7,13 @@ right_idx = mid - int((90 * 3.14159/180) / self.scan.angle_increment)
 distance = self.scan.ranges[right_idx]
 ```
 
+```
+    # Common ray indices for robot orientation
+    front_idx = len(ranges) // 2  # Forward direction
+    right_idx = 0                 # Right side (90 degrees)
+    left_idx = len(ranges) - 1    # Left side (270 degrees)
+```
+
 **What it does:**
 - Calculates the **exact index** for 90° to the right of center
 - Gets the **single distance reading** at that specific angle
