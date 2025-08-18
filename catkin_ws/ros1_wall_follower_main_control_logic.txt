@@ -79,17 +79,17 @@ class WallFollower:
 
         twist = Twist()
         if distance > 0.3:
-            twist.angular.z = -0.3
+            twist.angular.z = -0.4
         elif distance < 0.2:
-            twist.angular.z = 0.3
+            twist.angular.z = 0.4
         else:
             twist.angular.z = 0.0
-        twist.linear.x = 0.2
+        twist.linear.x = 0.1
 
         front = self.scan.ranges[mid]
         if front < 0.5:
-            twist.angular.z = 1.0
-            twist.linear.x = 0.2
+            twist.angular.z = 3.0
+            twist.linear.x = 0.1
 
         self.pub.publish(twist)
 
@@ -98,4 +98,3 @@ if __name__ == '__main__':
         WallFollower()
     except rospy.ROSInterruptException:
         pass
-
