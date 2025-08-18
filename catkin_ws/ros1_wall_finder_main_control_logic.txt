@@ -3,7 +3,8 @@ import rospy
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from ros_wall_following.srv import FindWall, FindWallResponse
-import math 
+import math
+import numpy as np
 
 
 class FindWallServer:
@@ -11,94 +12,238 @@ class FindWallServer:
         rospy.init_node('find_wall_server')
 
         self.scan = None
+        self.ranges = None
+        self.num_ranges = None
+        
         rospy.Subscriber('/scan', LaserScan, self.scan_callback)
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
 
         self.srv = rospy.Service('find_wall', FindWall, self.handle_find_wall)
-        rospy.loginfo("Find_wall service ready.")
+        rospy.loginfo("Find_wall service ready with sector-based analysis.")
         rospy.spin()
 
 
     def scan_callback(self, msg):
         self.scan = msg
+        
+        # Convert ranges to numpy array and filter invalid readings
+        ranges = np.array(msg.ranges)
+        self.ranges = np.where(np.isfinite(ranges), ranges, 10.0)
+        self.num_ranges = len(self.ranges)
 
-        # Debug print once
+        # Debug print laser configuration once
         if not hasattr(self, "_printed_debug"):
             self._printed_debug = True
-            rospy.loginfo(f"LaserScan config: angle_min={msg.angle_min:.2f} rad, "
-                          f"angle_max={msg.angle_max:.2f} rad, "
-                          f"angle_increment={msg.angle_increment:.4f} rad")
-            rospy.loginfo("Based on this config: ray[0] points to angle_min "
-                          f"({math.degrees(msg.angle_min):.1f}°), "
-                          f"ray[mid] points forward if scan is symmetric.")
+            rospy.loginfo("LaserScan config: angle_min=%.2f rad, angle_max=%.2f rad, "
+                          "angle_increment=%.4f rad" % (msg.angle_min, msg.angle_max, msg.angle_increment))
+            rospy.loginfo("180° Laser: %d points, 0°-180° coverage" % self.num_ranges)
+
+    def analyze_sectors_for_wall_finding(self):
+        """
+        Sector-based laser analysis for wall finding (ROS1 version)
+        
+        Divides 180° laser scan into meaningful sectors to find nearest wall.
+        Adapted from the sector-based analysis method for ROS1 compatibility.
+        
+        Returns:
+            dict: Analysis results with closest sector information
+        """
+        if self.ranges is None:
+            return None
+        
+        rospy.loginfo("Conducting sector-based 180° laser analysis...")
+        
+        # Define sectors for 180° laser (adapted from example file)
+        sectors = {
+            "Right": (0, 19),           # 0°-4.75° - far right side
+            "Front_Right": (20, 60),    # 5°-15° - front-right quadrant
+            "Right_Mid": (61, 99),      # 15.25°-24.75° - right-middle
+            "Front_Left": (100, 140),   # 25°-35° - front-left quadrant  
+            "Left_Near": (141, 179),    # 35.25°-44.75° - near left side
+            "Left_Mid": (180, 259),     # 45°-64.75° - left-middle
+            "Left_Far": (260, 339),     # 65°-84.75° - far left side
+            "Front_Center": (340, 380), # 85°-95° - center front (most important)
+            "Front_Wide": (320, 400),   # 80°-100° - wide front area
+            "Left_Forward": (401, 480), # 100.25°-120° - left-forward
+            "Left_Side": (481, 560),    # 120.25°-140° - left side
+            "Far_Left": (561, 719)      # 140.25°-179.75° - far left
+        }
+        
+        # Calculate minimum distance for each sector
+        min_distances = {}
+        sector_stats = {}
+        
+        for sector_name, (start_idx, end_idx) in sectors.items():
+            # Ensure indices are within valid range
+            start_idx = max(0, start_idx)
+            end_idx = min(len(self.ranges) - 1, end_idx)
+            
+            if start_idx <= end_idx:
+                # Extract sector data
+                sector_ranges = self.ranges[start_idx:end_idx + 1]
+                
+                # Filter out invalid readings
+                valid_sector_ranges = sector_ranges[np.isfinite(sector_ranges) & (sector_ranges > 0.0)]
+                
+                if len(valid_sector_ranges) > 0:
+                    min_distance = np.min(valid_sector_ranges)
+                    min_idx_in_sector = np.argmin(sector_ranges) + start_idx
+                    
+                    min_distances[sector_name] = min_distance
+                    sector_stats[sector_name] = {
+                        'min_distance': min_distance,
+                        'min_index': min_idx_in_sector,
+                        'min_angle': min_idx_in_sector * 0.25,  # 0.25° per index
+                        'start_idx': start_idx,
+                        'end_idx': end_idx
+                    }
+                else:
+                    min_distances[sector_name] = float('inf')
+                    sector_stats[sector_name] = None
+            else:
+                min_distances[sector_name] = float('inf')
+                sector_stats[sector_name] = None
+        
+        # Find the sector with absolute minimum distance
+        valid_sectors = {k: v for k, v in min_distances.items() if v != float('inf')}
+        
+        if valid_sectors:
+            closest_sector = min(valid_sectors, key=valid_sectors.get)
+            closest_distance = valid_sectors[closest_sector]
+            closest_sector_stats = sector_stats[closest_sector]
+        else:
+            rospy.logerr("No valid sectors found!")
+            return None
+        
+        # Calculate rotation needed to align front with closest obstacle
+        front_center_idx = 360  # Front center index for 180° laser
+        
+        if closest_sector_stats and closest_sector_stats['min_index'] is not None:
+            target_idx = closest_sector_stats['min_index']
+            angular_diff = target_idx - front_center_idx
+            
+            # Determine rotation direction
+            if angular_diff == 0:
+                rotation_needed = "NONE - Already aligned"
+                rotation_direction = 0
+            elif angular_diff > 0:
+                rotation_needed = "COUNTERCLOCKWISE by %d indices" % angular_diff
+                rotation_direction = 1
+            else:
+                rotation_needed = "CLOCKWISE by %d indices" % abs(angular_diff)
+                rotation_direction = -1
+        else:
+            rotation_needed = "UNKNOWN - No valid target"
+            rotation_direction = 0
+            angular_diff = 0
+        
+        # Print analysis results
+        rospy.loginfo("=" * 60)
+        rospy.loginfo("SECTOR-BASED 180° LASER ANALYSIS RESULTS")
+        rospy.loginfo("=" * 60)
+        rospy.loginfo("Closest obstacle in sector: %s" % closest_sector)
+        rospy.loginfo("Distance: %.3fm" % closest_distance)
+        if closest_sector_stats:
+            rospy.loginfo("Index: %d, Angle: %.1f°" % (closest_sector_stats['min_index'], closest_sector_stats['min_angle']))
+        rospy.loginfo("Rotation needed: %s" % rotation_needed)
+        rospy.loginfo("=" * 60)
+        
+        return {
+            'closest_sector': closest_sector,
+            'closest_distance': closest_distance,
+            'closest_sector_stats': closest_sector_stats,
+            'angular_difference': angular_diff,
+            'rotation_direction': rotation_direction,
+            'target_achieved': (angular_diff == 0)
+        }
 
 
     def handle_find_wall(self, req):
-        # wait for scan data
+        # Wait for scan data
         while not self.scan:
             rospy.sleep(0.1)
 
         rate = rospy.Rate(10)
         twist = Twist()
         
-        # Calculate indices based on laser configuration
-        num_rays = len(self.scan.ranges)
-        front_idx = num_rays // 2  # Front of the robot
-        right_side_idx = 0  # Ray 0 = right side of robot
+        rospy.loginfo("=== STARTING WALL-FINDING SEQUENCE (Sector-Based Analysis) ===")
         
-        rospy.loginfo(f"Laser has {num_rays} rays. Front index: {front_idx}, Right side index (ray 0): {right_side_idx}")
-
-        # 1. Point towards nearest wall
-        rospy.loginfo("Step 1: Rotating to face nearest wall")
-        while not rospy.is_shutdown():
-            ranges = list(self.scan.ranges)
-            # Filter out invalid readings (inf, nan, 0)
-            filtered = [(i, r) for i, r in enumerate(ranges) 
-                       if r > 0 and r != float('inf') and not math.isnan(r)]
+        # ==================== STEP 1: FACE NEAREST WALL ====================
+        rospy.loginfo("Step 1: Rotating to face nearest wall using sector analysis")
+        
+        # Stop robot for stable analysis
+        twist = Twist()
+        self.pub.publish(twist)
+        rospy.sleep(1.0)
+        
+        # Perform sector-based analysis
+        analysis_result = self.analyze_sectors_for_wall_finding()
+        
+        if analysis_result is None:
+            rospy.logerr("Failed to analyze laser data - aborting wall finding")
+            return FindWallResponse(wallfound=False)
+        
+        # Check if robot is already aligned with the nearest wall
+        if analysis_result['target_achieved']:
+            rospy.loginfo("Robot is already facing the nearest wall - proceeding to Step 2")
+        else:
+            # Execute rotation based on sector analysis
+            target_index = analysis_result['closest_sector_stats']['min_index']
+            target_angle = analysis_result['closest_sector_stats']['min_angle']
+            closest_distance = analysis_result['closest_distance']
+            closest_sector = analysis_result['closest_sector']
+            rotation_direction_sign = analysis_result['rotation_direction']
             
-            if not filtered:
-                rospy.logwarn("No valid laser readings!")
-                continue
+            rospy.loginfo("EXECUTING ROTATION (Sector-Based Analysis):")
+            rospy.loginfo("  Target: Index %d (%.1f°)" % (target_index, target_angle))
+            rospy.loginfo("  Closest Sector: %s" % closest_sector)
+            rospy.loginfo("  Distance to target: %.3fm" % closest_distance)
+            
+            # Rotate until front is aligned with nearest wall
+            while not rospy.is_shutdown():
+                # Get fresh sector analysis
+                current_analysis = self.analyze_sectors_for_wall_finding()
+                if current_analysis is None:
+                    break
                 
-            min_idx, min_dist = min(filtered, key=lambda x: x[1])
-            rospy.loginfo(f"Closest obstacle at index {min_idx}, distance {min_dist:.2f}m")
-            
-            # Check if we're already facing the wall (front ray is shortest)
-            front_dist = ranges[front_idx] if ranges[front_idx] > 0 and ranges[front_idx] != float('inf') else float('inf')
-            
-            # Allow some tolerance (within 5 indices of front)
-            if abs(min_idx - front_idx) <= 5 or front_dist < min_dist + 0.1:
-                rospy.loginfo("Now facing the nearest wall")
-                break
-            
-            # Determine rotation direction
-            # If min_idx < front_idx, we need to rotate right (negative angular.z)
-            # If min_idx > front_idx, we need to rotate left (positive angular.z)
-            if min_idx < front_idx:
-                twist.angular.z = -0.3  # Rotate right
-            else:
-                twist.angular.z = 0.3   # Rotate left
+                if current_analysis['target_achieved']:
+                    rospy.loginfo("TARGET ACHIEVED! Front is now aligned with nearest wall")
+                    break
+                else:
+                    closest_sector = current_analysis['closest_sector']
+                    closest_distance = current_analysis['closest_distance']
+                    rospy.loginfo("Still rotating... Closest obstacle in %s sector at %.3fm" % 
+                                (closest_sector, closest_distance))
                 
-            twist.linear.x = 0.0
-            self.pub.publish(twist)
-            rate.sleep()
-
+                # Send rotation command
+                twist.angular.z = rotation_direction_sign * 0.3
+                twist.linear.x = 0.0
+                self.pub.publish(twist)
+                rate.sleep()
+        
         # Stop rotation
         twist = Twist()
         self.pub.publish(twist)
         rospy.sleep(0.5)
 
-        # 2. Move forward until 0.3m from wall
-        rospy.loginfo("Step 2: Moving forward to wall")
+        # ==================== STEP 2: APPROACH WALL ====================
+        rospy.loginfo("Step 2: Moving forward to approach wall")
+        
+        # Front is at index 360 for 180° laser
+        front_idx = 360
+        
         while not rospy.is_shutdown():
             ranges = list(self.scan.ranges)
-            front_dist = ranges[front_idx]
+            front_dist = ranges[front_idx] if (front_idx < len(ranges) and 
+                                             ranges[front_idx] > 0 and 
+                                             ranges[front_idx] != float('inf') and 
+                                             not math.isnan(ranges[front_idx])) else float('inf')
             
-            if front_dist <= 0 or front_dist == float('inf') or math.isnan(front_dist):
+            if front_dist == float('inf'):
                 rospy.logwarn("Invalid front distance reading!")
                 break
                 
-            rospy.loginfo(f"Front distance: {front_dist:.2f}m")
+            rospy.loginfo("Front distance: %.2fm" % front_dist)
             
             if front_dist <= 0.3:
                 rospy.loginfo("Reached 0.3m from wall")
@@ -114,26 +259,29 @@ class FindWallServer:
         self.pub.publish(twist)
         rospy.sleep(0.5)
 
-        # 3. Rotate until right side (ray 270) is pointing at wall
-        rospy.loginfo("Step 3: Rotating to align ray 145 (right side) with wall")
-        target_idx = 145 if num_rays > 145 else 0  # Use ray 270 if available
+        # ==================== STEP 3: ALIGN WALL ON RIGHT SIDE ====================
+        rospy.loginfo("Step 3: Rotating to align wall on right side")
+        
+        # Right side is at index 0 for 180° laser
+        right_idx = 0
         
         while not rospy.is_shutdown():
             ranges = list(self.scan.ranges)
             
-            # Get distances for different directions
-            if target_idx < len(ranges):
-                right_dist = ranges[target_idx] if ranges[target_idx] > 0 and ranges[target_idx] != float('inf') and not math.isnan(ranges[target_idx]) else float('inf')
-            else:
-                rospy.logwarn(f"Ray {target_idx} not available, using ray 0")
-                target_idx = 0
-                right_dist = ranges[target_idx] if ranges[target_idx] > 0 and ranges[target_idx] != float('inf') and not math.isnan(ranges[target_idx]) else float('inf')
+            # Get right side distance
+            right_dist = ranges[right_idx] if (ranges[right_idx] > 0 and 
+                                             ranges[right_idx] != float('inf') and 
+                                             not math.isnan(ranges[right_idx])) else float('inf')
                 
-            front_dist = ranges[front_idx] if ranges[front_idx] > 0 and ranges[front_idx] != float('inf') and not math.isnan(ranges[front_idx]) else float('inf')
+            # Get front distance
+            front_dist = ranges[front_idx] if (front_idx < len(ranges) and 
+                                             ranges[front_idx] > 0 and 
+                                             ranges[front_idx] != float('inf') and 
+                                             not math.isnan(ranges[front_idx])) else float('inf')
             
-            rospy.loginfo(f"Ray {target_idx} (right side) distance: {right_dist:.2f}m, Front distance: {front_dist:.2f}m")
+            rospy.loginfo("Right side distance: %.2fm, Front distance: %.2fm" % (right_dist, front_dist))
             
-            # Find the current closest ray to determine if ray 270 is pointing at the wall
+            # Find the current closest ray to determine if right side is pointing at the wall
             filtered = [(i, r) for i, r in enumerate(ranges) 
                        if r > 0 and r != float('inf') and not math.isnan(r)]
             
@@ -143,12 +291,12 @@ class FindWallServer:
                 
             min_idx, min_dist = min(filtered, key=lambda x: x[1])
             
-            # Check if ray 270 is now pointing at the wall (is the closest or very close to closest)
-            if target_idx == min_idx or abs(right_dist - min_dist) < 0.1:
-                rospy.loginfo(f"Ray {target_idx} now aligned with wall (distance: {right_dist:.2f}m)")
+            # Check if right side is now pointing at the wall (is the closest or very close to closest)
+            if right_idx == min_idx or abs(right_dist - min_dist) < 0.1:
+                rospy.loginfo("Right side now aligned with wall (distance: %.2fm)" % right_dist)
                 break
             
-            # Rotate left to bring ray 0 toward wall
+            # Rotate left to bring right side toward wall
             twist.linear.x = 0.0
             twist.angular.z = 0.3
             self.pub.publish(twist)
@@ -158,7 +306,7 @@ class FindWallServer:
         twist = Twist()
         self.pub.publish(twist)
 
-        rospy.loginfo("Wall found and aligned.")
+        rospy.loginfo("Wall found and aligned using sector-based analysis.")
         return FindWallResponse(wallfound=True)
 
 if __name__ == '__main__':
