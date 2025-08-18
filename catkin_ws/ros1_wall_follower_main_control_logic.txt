@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import rospy, actionlib
+import math
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from ros_wall_following.srv import FindWall
@@ -97,3 +98,4 @@ if __name__ == '__main__':
         WallFollower()
     except rospy.ROSInterruptException:
         pass
+
