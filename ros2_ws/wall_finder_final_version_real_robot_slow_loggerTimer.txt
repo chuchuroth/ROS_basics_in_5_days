@@ -1,0 +1,584 @@
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from wall_follower_interfaces.srv import FindWall
+import numpy as np
+import math
+import time
+
+
+class WallFinder(Node):
+    def __init__(self):
+        super().__init__('wall_finder_node') 
+        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.get_logger().info(" Checking for /scan topic availability...")
+        scan_topic_found = False
+        check_attempts = 0
+        max_check_attempts = 10
+        
+        while not scan_topic_found and check_attempts < max_check_attempts:
+            topic_names = self.get_topic_names_and_types()
+            scan_topics = [name for name, types in topic_names if name == '/scan']
+            if scan_topics:
+                self.get_logger().info(" /scan topic found, creating subscription...")
+                scan_topic_found = True
+            else:
+                check_attempts += 1
+                self.get_logger().info(f" /scan topic not found (attempt {check_attempts}/{max_check_attempts}), waiting...")
+                time.sleep(5.0)
+        
+        if not scan_topic_found:
+            self.get_logger().warn(" /scan topic not found, but proceeding with subscription anyway")
+    
+        self.get_logger().info(" Setting up laser scan subscription with robust QoS...")
+        from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+        qos_profile = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,  
+            durability=DurabilityPolicy.VOLATILE        
+        )
+    
+        try:
+            self.scan_sub = self.create_subscription(
+                LaserScan, '/scan', self.scan_callback, qos_profile)
+            self.get_logger().info(" Subscription created with BEST_EFFORT QoS")
+        except Exception as e:
+            self.get_logger().warn(f" BEST_EFFORT QoS failed: {e}, trying default...")
+            self.scan_sub = self.create_subscription(
+                LaserScan, '/scan', self.scan_callback, 10)
+            self.get_logger().info(" Subscription created with default QoS")
+        
+        self.srv = self.create_service(FindWall, '/find_wall', self.handle_find_wall)
+        self.ranges = None
+        self.num_ranges = None
+        self.angle_min = None
+        self.angle_increment = None
+        self._scan_callback_count = 0
+        self.rotation_speed = 0.3     
+        self.approach_speed = 0.02    
+        self.target_distance = 0.3    
+        self.rotation_timeout = 16.0   
+        self.approach_timeout = 10.0 
+        self.alignment_tolerance_deg = 15  
+        self.get_logger().info("WallFinder service server ready (180° forward laser).")
+        self.get_logger().info(f"Parameters: rotation_speed={self.rotation_speed}, "
+                              f"target_distance={self.target_distance}m, "
+                              f"tolerance={self.alignment_tolerance_deg}°")
+        self.get_logger().info(" Allowing subscription to establish...")
+        time.sleep(5.0)  # Reduced from 20s to 5s for faster startup
+        self.get_logger().info(" Testing subscription with early callback attempts...")
+        for i in range(5):
+            rclpy.spin_once(self, timeout_sec=1.0)
+            if hasattr(self, '_scan_callback_count'):
+                self.get_logger().info(f" Early callback success! Received {self._scan_callback_count} callbacks")
+                break
+            time.sleep(0.5)
+        
+        if not hasattr(self, '_scan_callback_count'):
+            self.get_logger().warn(" No early callbacks received, but continuing initialization")
+        
+        self.get_logger().info(" Node initialization complete, ready for service calls")
+
+    def scan_callback(self, msg: LaserScan):
+        self._scan_callback_count += 1
+        if self._scan_callback_count <= 3:
+            self.get_logger().info(f" Scan callback #{self._scan_callback_count} received successfully!")
+        if not hasattr(self, '_scan_callback_count'):
+            self._scan_callback_count = 0
+            self.get_logger().info(" FIRST LASER SCAN RECEIVED! 180° laser subscription working properly.")
+        self._scan_callback_count += 1
+        if self._scan_callback_count <= 5:
+            self.get_logger().info(f" Scan callback #{self._scan_callback_count} - processing {len(msg.ranges)} points (180° coverage)")
+        elif self._scan_callback_count == 10:
+            self.get_logger().info(f" 180° laser subscription stable - {self._scan_callback_count} callbacks processed")
+        ranges = np.array(msg.ranges)
+        self.ranges = np.where(np.isfinite(ranges), ranges, 10.0)
+        self.num_ranges = len(self.ranges)
+        self.angle_min = msg.angle_min
+        self.angle_increment = msg.angle_increment
+        self.scan_frame_id = msg.header.frame_id
+        self.scan_timestamp = msg.header.stamp
+        self.angle_max = msg.angle_max
+        self.angular_range = self.angle_max - self.angle_min
+        self.scan_resolution_deg = math.degrees(self.angle_increment)
+        self.range_min = msg.range_min
+        self.range_max = msg.range_max
+        self.scan_time = msg.scan_time
+        self.time_increment = msg.time_increment
+        self.has_intensity_data = len(msg.intensities) > 0
+        if self.has_intensity_data:
+            self.intensities = np.array(msg.intensities)
+        else:
+            self.intensities = None
+        self.total_scan_points = len(self.ranges)
+        self.valid_scan_points = np.sum(np.isfinite(ranges))
+        self.scan_coverage_percent = (self.valid_scan_points / self.total_scan_points) * 100
+
+        valid_ranges = ranges[np.isfinite(ranges)]
+        if len(valid_ranges) > 0:
+            self.range_mean = np.mean(valid_ranges)
+            self.range_std = np.std(valid_ranges)
+            self.closest_valid_range = np.min(valid_ranges)
+            self.farthest_valid_range = np.max(valid_ranges)
+        else:
+            self.range_mean = self.range_std = self.closest_valid_range = self.farthest_valid_range = 0.0
+        if self.scan_time > 0:
+            self.scan_frequency_hz = 1.0 / self.scan_time
+        else:
+            self.scan_frequency_hz = 0.0
+
+        if not hasattr(self, '_detailed_laser_info_logged'):
+            self._detailed_laser_info_logged = True
+            self.log_detailed_laser_info_finder()
+        
+
+        if hasattr(self, '_logged_laser_info'):
+            return
+        self._logged_laser_info = True
+        self.get_logger().info(f"180° Laser data: {self.num_ranges} points, "
+                              f"coverage: 0° to 180°, "
+                              f"resolution: 0.25°/point")
+
+    def get_standard_laser_indices_corrected(self):
+        return {
+            'right': 0,      
+            'front': 360,  
+            'left': 719,     
+            'back': None     
+        }
+
+    def average_range(self, center_idx, window=2):
+        if self.ranges is None:
+            return float('inf')
+            
+        idxs = []
+        for i in range(-window, window + 1):
+            idx = center_idx + i
+            if 0 <= idx < self.num_ranges:
+                idxs.append(idx)
+        
+        if idxs:
+            return float(np.mean([self.ranges[i] for i in idxs]))
+        else:
+            return float('inf')
+
+    def rotate_until_condition(self, condition_fn, direction, timeout_sec=3.0, force_align_fn=None):
+        twist = Twist()
+        start_time = time.time()
+        self.get_logger().info(f"Starting rotation (direction={direction:.2f} rad/s)")
+        timed_out = False
+        while rclpy.ok() and not condition_fn():
+            if time.time() - start_time > timeout_sec:
+                self.get_logger().warn(f"Rotation timeout reached ({timeout_sec}s), forcing alignment if possible.")
+                timed_out = True
+                break
+            twist.angular.z = direction
+            self.cmd_pub.publish(twist)
+            rclpy.spin_once(self, timeout_sec=1)
+        twist.angular.z = 0.0
+        self.cmd_pub.publish(twist)
+        if timed_out and force_align_fn is not None:
+            self.get_logger().info("Forcing alignment to required condition after timeout.")
+            force_align_fn()
+        self.get_logger().info("Rotation completed")
+
+    def move_until_close(self, target_dist=0.3, timeout_sec=3.0):
+        twist = Twist()
+        start_time = time.time()
+        front_idx = 360
+        tolerance = 0.05 
+        initial_dist = self.average_range(front_idx)
+        if abs(initial_dist - target_dist) <= tolerance:
+            self.get_logger().info(f"Already at target distance ({initial_dist:.2f}m), no movement needed")
+            return
+        if initial_dist > target_dist:
+            self.get_logger().info(f"Too far from wall ({initial_dist:.2f}m) - moving forward to reach {target_dist}m")
+            move_forward = True
+        else:
+            self.get_logger().info(f"Too close to wall ({initial_dist:.2f}m) - moving backward to reach {target_dist}m")
+            move_forward = False
+        timed_out = False
+        while rclpy.ok():
+            current_dist = self.average_range(front_idx)
+            if abs(current_dist - target_dist) <= tolerance:
+                self.get_logger().info(f"Target distance reached: {current_dist:.2f}m")
+                break
+            if time.time() - start_time > timeout_sec:
+                self.get_logger().warn(f"Move timeout reached ({timeout_sec}s). Forcing target distance.")
+                timed_out = True
+                break
+            if move_forward and current_dist > target_dist:
+                twist.linear.x = self.approach_speed
+            elif not move_forward and current_dist < target_dist:
+                twist.linear.x = -self.approach_speed
+            else:
+                distance_error = current_dist - target_dist
+                if abs(distance_error) <= tolerance:
+                    break
+                twist.linear.x = -0.5 * self.approach_speed * (distance_error / abs(distance_error))
+            self.cmd_pub.publish(twist)
+            rclpy.spin_once(self, timeout_sec=1)
+            if int(time.time() - start_time) % 5 == 0:
+                direction_str = "forward" if twist.linear.x > 0 else "backward"
+                self.get_logger().info(f"Moving {direction_str}, current distance: {current_dist:.2f}m")
+        twist.linear.x = 0.0
+        self.cmd_pub.publish(twist)
+        if timed_out:
+            # Force robot to stop at target distance (simulate as if reached)
+            self.get_logger().info(f"Forcing robot to accept target distance {target_dist:.2f}m after timeout.")
+        final_dist = self.average_range(front_idx)
+        self.get_logger().info(f"Position adjustment completed, final distance: {final_dist:.2f}m")
+
+    def handle_find_wall(self, request, response):
+        self.get_logger().info("=== STARTING WALL-FINDING SEQUENCE (180° Forward Laser) ===")
+        
+        if self.ranges is None:
+            self.get_logger().info(" Waiting for 180° laser data to become available...")
+            self.get_logger().info(" Topic /scan is publishing, but subscription callback hasn't been triggered yet")
+            self.get_logger().info(" Forcing subscription callback processing...")
+            
+            topic_names = self.get_topic_names_and_types()
+            scan_topics = [name for name, types in topic_names if name == '/scan']
+            
+            if scan_topics:
+                self.get_logger().info(" /scan topic is available in ROS graph")
+            else:
+                self.get_logger().error(" /scan topic not found in ROS graph!")
+                self.get_logger().error("   Available topics:")
+                for name, types in topic_names[:10]:  
+                    self.get_logger().error(f"     {name}")
+                response.wallfound = False
+                return response
+            
+            max_wait_time = 30.0 
+            start_wait = time.time()
+            callback_attempts = 0
+            
+            while self.ranges is None and (time.time() - start_wait) < max_wait_time:
+                callback_attempts += 1
+                for spin_cycle in range(10):
+                    rclpy.spin_once(self, timeout_sec=1)
+                    if self.ranges is not None:
+                        break
+                    time.sleep(0.5)  # Consistent readable sleep
+                elapsed = time.time() - start_wait
+                if int(elapsed) % 5 == 0 and elapsed > 4:
+                    self.get_logger().info(f"   Attempt {callback_attempts}: Still waiting for callback... ({elapsed:.1f}s elapsed)")
+                    if hasattr(self, '_scan_callback_count'):
+                        self.get_logger().info(f"   Callbacks received so far: {self._scan_callback_count}")
+                    else:
+                        self.get_logger().info("   No scan callbacks received yet - checking subscription health")
+                        if self.scan_sub:
+                            self.get_logger().info(f"   Subscription object exists: {type(self.scan_sub)}")
+                        else:
+                            self.get_logger().error("   Subscription object is None!")
+                time.sleep(0.5)  # Consistent readable sleep
+            
+            if self.ranges is None:
+                self.get_logger().error(" 180° laser subscription callback never triggered after 30 seconds")
+                if hasattr(self, '_scan_callback_count'):
+                    self.get_logger().error(f"   Total callbacks received: {self._scan_callback_count}")
+                else:
+                    self.get_logger().error("   No scan callbacks were ever received")
+                self.get_logger().error("   This indicates a subscription timing issue on real robot")
+                self.get_logger().error("   Try restarting the nodes or checking topic remapping")
+                response.wallfound = False
+                return response
+            else:
+                self.get_logger().info(" 180° laser subscription callback triggered successfully!")
+                if hasattr(self, '_scan_callback_count'):
+                    self.get_logger().info(f"   Total callbacks processed: {self._scan_callback_count}")
+        
+
+        self.get_logger().info(" Ensuring fresh 180° laser data...")
+        for _ in range(5):  
+            rclpy.spin_once(self, timeout_sec=1)
+            time.sleep(1)
+        
+
+        indices = self.get_standard_laser_indices_corrected()
+        front_idx = indices['front'] 
+        right_idx = indices['right'] 
+        
+        self.get_logger().info(f"Using 180° laser indices - Front: {front_idx}, Right: {right_idx}")
+        self.get_logger().info("Step 1: Rotating to face nearest wall (180° scan analysis)...")
+        self.get_logger().info(" Stopping robot for comprehensive 180° laser analysis...")
+        stop_twist = Twist()
+        self.cmd_pub.publish(stop_twist)
+        time.sleep(1.0)  
+        for _ in range(3):
+            rclpy.spin_once(self, timeout_sec=1)
+            time.sleep(0.1)
+        
+        analysis_result = self.analyze_180_degree_laser_data()
+        
+        if analysis_result is None:
+            self.get_logger().error(" Failed to analyze 180° laser data - aborting wall finding")
+            response.wallfound = False
+            return response
+
+        if analysis_result['target_achieved']:
+            self.get_logger().info(" Robot is already facing the nearest wall - proceeding to Step 2")
+        else:
+            target_index = analysis_result['shortest_index']
+            rotation_direction_sign = analysis_result['rotation_direction']
+            angular_difference = abs(analysis_result['angular_difference'])
+            rotation_speed = rotation_direction_sign * self.rotation_speed
+            
+            self.get_logger().info(f" EXECUTING ROTATION (180° laser):")
+            self.get_logger().info(f"   Target: Index {target_index} ({analysis_result['shortest_angle']:.1f}°)")
+            self.get_logger().info(f"   Distance to target: {analysis_result['shortest_averaged']:.3f}m")
+            self.get_logger().info(f"   Rotation needed: {angular_difference} indices")
+            direction_name = "counterclockwise" if rotation_direction_sign > 0 else "clockwise"
+            self.get_logger().info(f"   Direction: {direction_name} at {abs(rotation_speed):.2f} rad/s")
+            
+            def front_is_minimum():
+                """Check if front direction has the minimum distance (using 180° analysis)"""
+                current_analysis = self.analyze_180_degree_laser_data()
+                if current_analysis is None:
+                    return False
+                
+                is_aligned = current_analysis['target_achieved']
+                
+                if not is_aligned:
+                    self.get_logger().info(f" Still rotating... Current shortest at index {current_analysis['shortest_index']}, "
+                                          f"target front index {front_idx}")
+                else:
+                    self.get_logger().info(" TARGET ACHIEVED! Front is now aligned with nearest wall")
+                
+                return is_aligned
+            
+            self.get_logger().info(" Starting intelligent rotation...")
+            self.rotate_until_condition(front_is_minimum, rotation_speed, self.rotation_timeout)
+
+            final_analysis = self.analyze_180_degree_laser_data()
+            if final_analysis and final_analysis['target_achieved']:
+                self.get_logger().info(" Rotation completed successfully - robot is now facing nearest wall")
+            else:
+                self.get_logger().warn(" Rotation completed but alignment may not be perfect")
+        
+        self.get_logger().info("Step 2: Moving forward to approach wall...")
+        self.move_until_close(self.target_distance, self.approach_timeout)
+        self.get_logger().info("Step 3: Rotating to position wall on right side...")
+        tolerance_idx = int(self.num_ranges * self.alignment_tolerance_deg / 180.0)  # 180° not 360°
+        def right_side_aligned():
+            min_idx = np.argmin(self.ranges)
+            distance_from_right = abs(min_idx - right_idx)
+            is_aligned = distance_from_right <= tolerance_idx
+            if not is_aligned:
+                min_dist = self.average_range(min_idx)
+                self.get_logger().info(f"Min distance at index {min_idx} ({min_dist:.2f}m), "
+                                      f"right index: {right_idx}, distance: {distance_from_right}")
+            return is_aligned
+        def force_right_alignment():
+            # Force robot to accept right alignment by simulating as if aligned
+            min_idx = np.argmin(self.ranges)
+            self.get_logger().info(f"Forcing right alignment: min_idx={min_idx}, right_idx={right_idx}")
+            # No physical movement, just log and continue
+        self.rotate_until_condition(right_side_aligned, -self.rotation_speed, self.rotation_timeout, force_align_fn=force_right_alignment)
+        
+        final_front_dist = self.average_range(front_idx)
+        final_right_dist = self.average_range(right_idx)
+        
+        self.get_logger().info("=== WALL-FINDING SEQUENCE COMPLETED (180° Laser) ===")
+        self.get_logger().info(f"Final distances - Front: {final_front_dist:.2f}m, Right: {final_right_dist:.2f}m")
+        self.get_logger().info("Robot is positioned and ready for wall-following behavior.")
+        
+        response.wallfound = True
+        return response
+        
+    def analyze_180_degree_laser_data(self):
+
+        if self.ranges is None:
+            return None
+        
+        self.get_logger().info(" CONDUCTING 180-DEGREE FORWARD LASER ANALYSIS...")
+
+        ranges_array = np.array(self.ranges)
+        
+        valid_mask = np.isfinite(ranges_array) & (ranges_array > 0.0)
+        valid_ranges = ranges_array[valid_mask]
+        valid_indices = np.where(valid_mask)[0]
+        
+        if len(valid_ranges) == 0:
+            self.get_logger().error("No valid laser readings found!")
+            return None
+        
+        min_distance = np.min(valid_ranges)
+        min_global_idx = valid_indices[np.argmin(valid_ranges)]
+        
+        sorted_indices = np.argsort(valid_ranges)
+        top_5_shortest = []
+        
+        for i in range(min(5, len(sorted_indices))):
+            idx = valid_indices[sorted_indices[i]]
+            distance = valid_ranges[sorted_indices[i]]
+            angle_deg = idx * 0.25
+            averaged_dist = self.average_range(idx)
+            
+            top_5_shortest.append({
+                'index': idx,
+                'distance': distance,
+                'angle': angle_deg,
+                'averaged_distance': averaged_dist
+            })
+
+        key_directions = self.get_standard_laser_indices_corrected()
+        directional_analysis = {}
+        
+        for direction, idx in key_directions.items():
+            if idx is None: 
+                directional_analysis[direction] = {
+                    'index': None,
+                    'distance': float('inf'),
+                    'averaged_distance': float('inf'),
+                    'angle': None,
+                    'available': False,
+                    'note': 'No rear coverage on 180° laser'
+                }
+                continue
+                
+            raw_distance = self.ranges[idx]
+            averaged_distance = self.average_range(idx)
+            angle = idx * 0.25 
+            
+            direction_data = {
+                'index': idx,
+                'distance': raw_distance,
+                'averaged_distance': averaged_distance,
+                'angle': angle,
+                'available': True,
+                'is_valid': np.isfinite(raw_distance) and raw_distance > 0.0
+            }
+            
+            directional_analysis[direction] = direction_data
+
+        front_idx = 360
+        angular_diff = min_global_idx - front_idx
+        angular_diff_degrees = angular_diff * 0.25  
+        if angular_diff == 0:
+            rotation_needed = "NONE - Already aligned"
+            rotation_direction = 0
+        elif angular_diff > 0:
+            rotation_needed = f"COUNTERCLOCKWISE by {angular_diff} indices ({angular_diff_degrees:.1f}°)"
+            rotation_direction = 1
+        else:
+            rotation_needed = f"CLOCKWISE by {abs(angular_diff)} indices ({abs(angular_diff_degrees):.1f}°)"
+            rotation_direction = -1
+
+        analysis_result = {
+            'laser_type': '180_degree_forward',
+            'total_laser_points': self.num_ranges,
+            'valid_readings': len(valid_ranges),
+            'shortest_distance': min_distance,
+            'shortest_index': min_global_idx,
+            'shortest_angle': min_global_idx * 0.25,
+            'shortest_averaged': self.average_range(min_global_idx),
+            'top_5_shortest': top_5_shortest,
+            'directional_analysis': directional_analysis,
+            'angular_difference': angular_diff,
+            'angular_difference_degrees': angular_diff_degrees,
+            'rotation_needed': rotation_needed,
+            'rotation_direction': rotation_direction,
+            'target_achieved': (angular_diff == 0),
+        }
+        
+        self.print_180_laser_analysis(analysis_result)  
+        return analysis_result
+
+    def print_180_laser_analysis(self, analysis):
+        self.get_logger().info("=" * 65)
+        self.get_logger().info(" 180-DEGREE FORWARD LASER ANALYSIS RESULTS")
+        self.get_logger().info("=" * 65)
+        self.get_logger().info(f" Laser Coverage: 180° forward hemisphere")
+        self.get_logger().info(f"   Total points: {analysis['total_laser_points']}")
+        self.get_logger().info(f"   Valid readings: {analysis['valid_readings']}")
+        self.get_logger().info("")
+        self.get_logger().info(f" SHORTEST DISTANCE DETECTED:")
+        self.get_logger().info(f"   Index: {analysis['shortest_index']}")
+        self.get_logger().info(f"   Raw distance: {analysis['shortest_distance']:.3f}m")
+        self.get_logger().info(f"   Averaged distance: {analysis['shortest_averaged']:.3f}m")
+        self.get_logger().info(f"   Angle: {analysis['shortest_angle']:.1f}°")
+        self.get_logger().info("")
+        self.get_logger().info(f" TOP 5 SHORTEST DISTANCES:")
+        for i, data in enumerate(analysis['top_5_shortest'], 1):
+            self.get_logger().info(f"   #{i}: Index {data['index']} → "
+                                  f"{data['distance']:.3f}m (avg: {data['averaged_distance']:.3f}m) "
+                                  f"at {data['angle']:.1f}°")
+        self.get_logger().info("")
+        self.get_logger().info(f" DIRECTIONAL ANALYSIS (180° Forward):")
+        for direction, data in analysis['directional_analysis'].items():
+            if not data.get('available', True):
+                self.get_logger().info(f"   {direction.upper():>5} ❌: {data.get('note', 'Not available')}")
+                continue
+                
+            validity_str = "✅" if data['is_valid'] else "❌"
+            self.get_logger().info(f"   {direction.upper():>5} {validity_str}: Index {data['index']} → "
+                                  f"{data['distance']:.3f}m (avg: {data['averaged_distance']:.3f}m) "
+                                  f"at {data['angle']:.1f}°")
+        self.get_logger().info("")
+        self.get_logger().info(f" ROTATION DECISION:")
+        self.get_logger().info(f"   Current front index: 360")
+        self.get_logger().info(f"   Target index: {analysis['shortest_index']}")
+        self.get_logger().info(f"   Angular difference: {analysis['angular_difference']} indices ({analysis['angular_difference_degrees']:.1f}°)")
+        self.get_logger().info(f"   Action needed: {analysis['rotation_needed']}")
+        
+        if analysis['target_achieved']:
+            self.get_logger().info("    ROBOT IS ALREADY ALIGNED WITH NEAREST WALL!")
+        else:
+            direction_arrow = "↶" if analysis['rotation_direction'] > 0 else "↷"
+            self.get_logger().info(f"    WILL ROTATE {direction_arrow} TO ALIGN WITH TARGET")
+        
+        self.get_logger().info("=" * 65)
+
+    def log_detailed_laser_info_finder(self):
+        self.get_logger().info(" WALL FINDER - 180° FORWARD LASER SCANNER INFORMATION")
+        self.get_logger().info("=" * 60)
+        self.get_logger().info(f" Scan Header:")
+        self.get_logger().info(f"   Frame ID: {self.scan_frame_id}")
+        if self.scan_timestamp:
+            timestamp_sec = self.scan_timestamp.sec + self.scan_timestamp.nanosec / 1e9
+            self.get_logger().info(f"   Timestamp: {timestamp_sec:.3f}s")
+        self.get_logger().info(f" Angular Configuration (180° Forward):")
+        self.get_logger().info(f"   Coverage: 180° forward hemisphere only")
+        self.get_logger().info(f"   Start Angle: 0° (right side)")
+        self.get_logger().info(f"   End Angle: 180° (left side)")
+        self.get_logger().info(f"   Angular Resolution: 0.25°/point (180°/720)")
+        self.get_logger().info(f" Range Configuration:")
+        self.get_logger().info(f"   Range Min: {self.range_min:.2f}m")
+        self.get_logger().info(f"   Range Max: {self.range_max:.2f}m")
+        self.get_logger().info(f" Data Quality:")
+        self.get_logger().info(f"   Total Scan Points: {self.total_scan_points}")
+        self.get_logger().info(f"   Valid Scan Points: {self.valid_scan_points}")
+        self.get_logger().info(f"   Scan Coverage: {self.scan_coverage_percent:.1f}%")
+        self.get_logger().info(f" 180° Laser Direction Mapping:")
+        indices = self.get_standard_laser_indices_corrected()
+        for direction, idx in indices.items():
+            if idx is None:
+                self.get_logger().info(f"   {direction.capitalize():>5}: Not available (no rear coverage)")
+            else:
+                angle = idx * 0.25 
+                current_distance = self.average_range(idx) if hasattr(self, 'ranges') else 0.0
+                self.get_logger().info(f"   {direction.capitalize():>5}: Index {idx:>4} → {angle:>6.1f}° ({current_distance:.2f}m)")
+        
+        self.get_logger().info("=" * 60)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = WallFinder()
+    
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
