@@ -1,0 +1,600 @@
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from wall_follower_interfaces.srv import FindWall
+from wall_follower_interfaces.action import OdomRecord
+import numpy as np
+import math
+
+
+class WallFollowing(Node):
+
+    
+    def __init__(self):
+
+        super().__init__('wall_following_node')
+        
+        # ==================== PUBLISHERS & SUBSCRIBERS ====================
+        
+        # Publisher for robot velocity commands
+        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        
+        # Subscriber to laser scan data for wall detection and avoidance
+        self.scan_sub = self.create_subscription(
+            LaserScan, '/scan', self.laser_callback, 10)
+        
+        # ==================== SERVICE & ACTION CLIENTS ====================
+        
+        # Service client for finding and aligning with walls
+        self.find_wall_client = self.create_client(FindWall, '/find_wall')
+        
+        # Action client for recording odometry data during wall following
+        self.odom_action_client = ActionClient(self, OdomRecord, '/record_odom')
+        
+        # ==================== LASER DATA STORAGE ====================
+        
+        # Current laser scan data (filtered and processed)
+        self.ranges = None              # Numpy array of distances
+        self.intensities = None         # Numpy array of signal intensities (if available)
+        
+        # LaserScan message parameters
+        self.angle_min = None           # Starting angle of scan
+        self.angle_max = None           # Ending angle of scan
+        self.angle_increment = None     # Angular resolution of laser
+        self.time_increment = None      # Time between measurements
+        self.scan_time = None           # Time for complete scan
+        self.range_min = None           # Minimum valid range
+        self.range_max = None           # Maximum valid range
+        
+        # Derived parameters
+        self.num_ranges = None          # Total number of laser points
+        self.angular_range = None       # Total angular coverage
+        self.scan_resolution_deg = None # Angular resolution in degrees
+        self.total_scan_points = None   # Total points in scan
+        self.valid_scan_points = None   # Valid points after filtering
+        
+        # Scan metadata
+        self.scan_timestamp = None      # Timestamp of latest scan
+        self.scan_frame_id = None       # Coordinate frame of scan
+        self.has_intensity_data = False # Whether intensity data is available
+        
+        # ==================== CONTROL PARAMETERS ====================
+        
+        # Wall following distance thresholds
+        self.min_wall_distance = 0.2       # meters - minimum distance from wall
+        self.max_wall_distance = 0.3       # meters - maximum distance from wall
+        self.target_wall_distance = 0.25   # meters - ideal distance from wall
+        
+        # Obstacle detection parameters
+        self.front_obstacle_threshold = 0.5    # meters - front obstacle detection
+        
+        # Speed parameters
+        self.forward_speed = 0.1            # m/s - normal forward speed
+        self.turn_speed = 0.3               # rad/s - normal turning speed
+        self.sharp_turn_speed = 0.8         # rad/s - sharp turn for obstacles
+        
+        # Control loop timing
+        self.control_rate = 10.0            # Hz - control loop frequency
+        
+        # ==================== STATE VARIABLES ====================
+        
+        # Operational state flags
+        self.wall_found = False             # True when wall finding is complete
+        self.odom_recording = False         # True when odometry recording is active
+        self.preparation_complete = False   # True when setup sequence is done
+        
+        # ==================== INITIALIZATION ====================
+        
+        self.get_logger().info("Wall Following Controller initialized")
+        self.get_logger().info("Control parameters:")
+        self.get_logger().info(f"  - Wall distance range: {self.min_wall_distance}-{self.max_wall_distance}m")
+        self.get_logger().info(f"  - Front obstacle threshold: {self.front_obstacle_threshold}m")
+        self.get_logger().info(f"  - Forward speed: {self.forward_speed}m/s")
+        self.get_logger().info(f"  - Turn speeds: {self.turn_speed}/{self.sharp_turn_speed}rad/s")
+        
+        # Execute preparation sequence immediately
+        self.prepare_robot()
+        
+        # Start main control loop timer (10 Hz) - will only run after preparation
+        self.control_timer = self.create_timer(
+            1.0 / self.control_rate, self.control_loop)
+
+    def laser_callback(self, msg: LaserScan):
+     
+        # Store header information for timing and coordinate frame
+        self.scan_timestamp = msg.header.stamp
+        self.scan_frame_id = msg.header.frame_id
+        
+        # Store laser scanner specifications
+        self.angle_min = msg.angle_min
+        self.angle_max = msg.angle_max
+        self.angle_increment = msg.angle_increment
+        self.time_increment = msg.time_increment
+        self.scan_time = msg.scan_time
+        self.range_min = msg.range_min
+        self.range_max = msg.range_max
+        
+        # Convert ranges to numpy array for efficient processing
+        ranges = np.array(msg.ranges)
+        
+        # Advanced filtering using LaserScan specifications
+        # Filter out readings outside valid range
+        valid_range_mask = (ranges >= self.range_min) & (ranges <= self.range_max)
+        # Filter out infinite and NaN values
+        finite_mask = np.isfinite(ranges)
+        # Combine both filters
+        valid_mask = valid_range_mask & finite_mask
+        
+        # Replace invalid readings with safe large distance
+        self.ranges = np.where(valid_mask, ranges, 10.0)
+        
+        # Store laser scan parameters
+        self.num_ranges = len(ranges)
+        
+        # Process intensity data if available
+        if len(msg.intensities) > 0:
+            self.intensities = np.array(msg.intensities)
+            self.has_intensity_data = True
+        else:
+            self.intensities = None
+            self.has_intensity_data = False
+        
+        # Calculate additional useful metrics
+        self.angular_range = self.angle_max - self.angle_min
+        self.total_scan_points = len(ranges)
+        self.valid_scan_points = np.sum(valid_mask)
+        self.scan_resolution_deg = math.degrees(self.angle_increment)
+        
+            # Log detailed laser configuration once for debugging
+        if not hasattr(self, '_detailed_laser_info_logged'):
+            self._detailed_laser_info_logged = True
+            self.log_detailed_laser_info()
+
+    def log_detailed_laser_info(self):
+
+        self.get_logger().info(" DETAILED LASER SCANNER INFORMATION")
+        self.get_logger().info("=" * 50)
+        
+        # Header information
+        self.get_logger().info(" Scan Header:")
+        self.get_logger().info(f"   Frame ID: {self.scan_frame_id}")
+        if self.scan_timestamp:
+            timestamp_sec = self.scan_timestamp.sec + self.scan_timestamp.nanosec / 1e9
+            self.get_logger().info(f"   Timestamp: {timestamp_sec:.3f}s")
+        
+        # Angular parameters
+        self.get_logger().info(" Angular Configuration:")
+        self.get_logger().info(f"   Angle Min: {math.degrees(self.angle_min):.2f}°")
+        self.get_logger().info(f"   Angle Max: {math.degrees(self.angle_max):.2f}°")
+        self.get_logger().info(f"   Angular Range: {math.degrees(self.angular_range):.2f}°")
+        self.get_logger().info(f"   Angular Resolution: {self.scan_resolution_deg:.3f}°")
+        
+        # Range parameters
+        self.get_logger().info(" Range Configuration:")
+        self.get_logger().info(f"   Range Min: {self.range_min:.2f}m")
+        self.get_logger().info(f"   Range Max: {self.range_max:.2f}m")
+        
+        # Timing parameters
+        self.get_logger().info(" Timing Configuration:")
+        self.get_logger().info(f"   Scan Time: {self.scan_time:.4f}s")
+        self.get_logger().info(f"   Time Increment: {self.time_increment:.6f}s")
+        scan_frequency = 1.0 / self.scan_time if self.scan_time > 0 else 0
+        self.get_logger().info(f"   Scan Frequency: {scan_frequency:.1f} Hz")
+        
+        # Data quality
+        self.get_logger().info(" Data Quality:")
+        self.get_logger().info(f"   Total Scan Points: {self.total_scan_points}")
+        self.get_logger().info(f"   Valid Scan Points: {self.valid_scan_points}")
+        valid_percentage = (self.valid_scan_points / self.total_scan_points) * 100
+        self.get_logger().info(f"   Valid Data: {valid_percentage:.1f}%")
+        self.get_logger().info(f"   Intensity Data: {'Available' if self.has_intensity_data else 'Not Available'}")
+        
+        # Standard interpretation mapping
+        self.get_logger().info(" 180-Degree Laser Direction Mapping:")
+        indices = self.get_standard_laser_indices_corrected()
+        if indices:
+            for direction, idx in indices.items():
+                if idx is not None:  # Skip 'back' which is None for 180° laser
+                    if direction == 'right':
+                        angle_deg = 0
+                    elif direction == 'front':
+                        angle_deg = 90
+                    elif direction == 'left':
+                        angle_deg = 180
+                    else:
+                        continue
+                    self.get_logger().info(f"   {direction.capitalize():>5}: Index {idx:>4} → {angle_deg:>3}°")
+                else:
+                    self.get_logger().info(f"   {direction.capitalize():>5}: Not available (180° laser)")
+        
+        self.get_logger().info("=" * 50)
+
+    def get_standard_laser_indices_corrected(self):
+
+        if self.num_ranges is None:
+            return None
+        
+        # For 180-degree forward-facing laser with 720 points:
+        # Angular resolution = 180° / 720 = 0.25° per index
+        # Index calculation: angle_deg / 0.25 = angle_deg * 4
+        
+        return {
+            'right': 0,        # 0° - right side (start of scan)
+            'front': 360,      # 90° - forward direction  
+            'left': 719,       # 180° - left side (end of scan)
+            'back': None       # No back coverage in 180° laser
+        }
+
+    def index_to_angle_precise(self, index):
+
+        if self.angle_min is None or self.angle_increment is None:
+            return None
+        
+        angle_rad = self.angle_min + (index * self.angle_increment)
+        angle_deg = math.degrees(angle_rad)
+        
+        # Normalize to 0-360 range
+        while angle_deg < 0:
+            angle_deg += 360
+        while angle_deg >= 360:
+            angle_deg -= 360
+            
+        return angle_deg
+
+    def get_scan_quality_metrics(self):
+
+        if self.ranges is None:
+            return None
+        
+        # Calculate data completeness
+        total_points = len(self.ranges)
+        valid_points = np.sum(np.isfinite(self.ranges))
+        data_completeness = (valid_points / total_points) * 100
+        
+        # Calculate range statistics
+        valid_ranges = self.ranges[np.isfinite(self.ranges)]
+        if len(valid_ranges) > 0:
+            range_mean = np.mean(valid_ranges)
+            range_std = np.std(valid_ranges)
+            range_min_actual = np.min(valid_ranges)
+            range_max_actual = np.max(valid_ranges)
+        else:
+            range_mean = range_std = range_min_actual = range_max_actual = 0.0
+        
+        # Detect potential issues
+        issues = []
+        if data_completeness < 90:
+            issues.append(f"Low data completeness: {data_completeness:.1f}%")
+        if range_std > 2.0:
+            issues.append(f"High range variation: {range_std:.2f}m")
+        
+        return {
+            'data_completeness_percent': data_completeness,
+            'total_points': total_points,
+            'valid_points': valid_points,
+            'range_mean': range_mean,
+            'range_std': range_std,
+            'range_min_actual': range_min_actual,
+            'range_max_actual': range_max_actual,
+            'potential_issues': issues,
+            'scan_health': 'Good' if len(issues) == 0 else 'Warning'
+        }
+
+    def get_intensity_analysis(self):
+
+        if not self.has_intensity_data or self.intensities is None:
+            return None
+        
+        # Calculate intensity statistics
+        valid_intensities = self.intensities[np.isfinite(self.intensities)]
+        if len(valid_intensities) == 0:
+            return None
+        
+        intensity_mean = np.mean(valid_intensities)
+        intensity_std = np.std(valid_intensities)
+        intensity_min = np.min(valid_intensities)
+        intensity_max = np.max(valid_intensities)
+        
+        # Simple surface type classification based on intensity
+        surface_types = []
+        if intensity_mean > 2000:
+            surface_types.append("Highly reflective surfaces detected")
+        if intensity_std > 1000:
+            surface_types.append("Mixed surface materials detected")
+        if intensity_min < 100:
+            surface_types.append("Low reflectivity surfaces detected")
+        
+        return {
+            'intensity_mean': intensity_mean,
+            'intensity_std': intensity_std,
+            'intensity_min': intensity_min,
+            'intensity_max': intensity_max,
+            'surface_analysis': surface_types if surface_types else ["Standard reflectivity surfaces"]
+        }
+
+    def get_averaged_distance(self, center_index, window_size=2):
+
+        if self.ranges is None or self.num_ranges is None:
+            return float('inf')
+        
+        # Create list of indices within the window, handling wraparound
+        indices = []
+        for i in range(-window_size, window_size + 1):
+            idx = (center_index + i) % self.num_ranges
+            indices.append(idx)
+        
+        # Calculate and return average distance
+        distances = [self.ranges[i] for i in indices]
+        return float(np.mean(distances))
+
+    def get_control_distances(self):
+
+        if self.ranges is None:
+            return {
+                'front': float('inf'),
+                'right': float('inf'),
+                'front_right': float('inf')
+            }
+        
+        # Get CORRECTED laser indices for 180-degree forward-facing laser
+        indices = self.get_standard_laser_indices_corrected()
+        if indices is None:
+            return {
+                'front': float('inf'),
+                'right': float('inf'),
+                'front_right': float('inf')
+            }
+        
+        # For 180-degree laser, calculate front-right diagonal (45° from front toward right)
+        # Front is at 90°, so front-right is at 90° - 45° = 45°
+        if self.angle_min is not None and self.angle_increment is not None:
+            front_right_angle_rad = math.radians(45)  # 45° for front-right diagonal
+            front_right_index = int((front_right_angle_rad - self.angle_min) / self.angle_increment)
+            front_right_index = max(0, min(front_right_index, self.num_ranges - 1))
+        else:
+            # Fallback: approximate front-right for 180° laser
+            front_right_index = int(self.num_ranges * 0.25)  # 45° position
+        
+        return {
+            'front': self.get_averaged_distance(indices['front']),
+            'right': self.get_averaged_distance(indices['right']),
+            'front_right': self.get_averaged_distance(front_right_index)
+        }
+
+    def calculate_wall_following_control(self):
+
+        # Get current distances at key positions
+        distances = self.get_control_distances()
+        front_dist = distances['front']
+        right_dist = distances['right']
+        
+        # Create velocity command message
+        twist = Twist()
+        
+        # ==================== PRIORITY 1: OBSTACLE AVOIDANCE ====================
+        
+        # If obstacle detected in front, prioritize turning left to avoid collision
+        if front_dist < self.front_obstacle_threshold:
+            # Reduce forward speed and turn sharply left
+            twist.linear.x = self.forward_speed * 0.6    # Slow down for safety
+            twist.angular.z = self.sharp_turn_speed      # Sharp left turn
+            
+            # Log obstacle detection for debugging
+            self.get_logger().info(f"OBSTACLE DETECTED! Front: {front_dist:.3f}m - "
+                                  f"Turning left sharply")
+        
+        # ==================== PRIORITY 2: BANG-BANG WALL DISTANCE CONTROL ====================
+        
+        # Too far from wall - turn right to get closer (fixed angular velocity)
+        elif right_dist > self.max_wall_distance:
+            twist.linear.x = self.forward_speed
+            twist.angular.z = -self.turn_speed    # Fixed rate: -0.3 rad/s turn right
+            
+            # Log control action
+            if hasattr(self, '_last_action') and self._last_action != 'turn_right':
+                self.get_logger().info(f"Too far from wall ({right_dist:.3f}m) - turning right at fixed rate")
+                self._last_action = 'turn_right'
+        
+        # Too close to wall - turn left to increase distance (fixed angular velocity)
+        elif right_dist < self.min_wall_distance:
+            twist.linear.x = self.forward_speed
+            twist.angular.z = self.turn_speed     # Fixed rate: +0.3 rad/s turn left
+            
+            # Log control action
+            if hasattr(self, '_last_action') and self._last_action != 'turn_left':
+                self.get_logger().info(f"Too close to wall ({right_dist:.3f}m) - turning left at fixed rate")
+                self._last_action = 'turn_left'
+        
+        # ==================== PRIORITY 3: OPTIMAL BANG-BANG DEADBAND ====================
+        
+        # In optimal range - go straight with maximum speed (bang-bang deadband)
+        else:
+            twist.linear.x = self.forward_speed
+            twist.angular.z = 0.0                 # No turning in deadband zone
+            
+            # Log control action
+            if hasattr(self, '_last_action') and self._last_action != 'straight':
+                self.get_logger().info(f"Optimal distance ({right_dist:.3f}m) - in deadband, going straight")
+                self._last_action = 'straight'
+        
+        return twist.linear.x, twist.angular.z
+
+    def publish_velocity(self, linear_vel, angular_vel):
+
+        twist = Twist()
+        twist.linear.x = linear_vel
+        twist.angular.z = angular_vel
+        self.cmd_pub.publish(twist)
+
+    def stop_robot(self):
+
+        self.publish_velocity(0.0, 0.0)
+
+    def prepare_robot(self):
+
+        self.get_logger().info("=== ROBOT PREPARATION SEQUENCE ===")
+        
+        # Step 1: Find and align with wall
+        if not self.call_find_wall_service():
+            self.get_logger().error(" Could not find wall - aborting preparation")
+            return False
+        
+        # Step 2: Start odometry recording
+        if not self.start_odom_recording():
+            self.get_logger().error(" Could not start odometry recording - aborting preparation")
+            return False
+        
+        # Step 3: Mark preparation complete
+        self.preparation_complete = True
+        self.get_logger().info(" Preparation complete - starting wall following behavior")
+        
+        return True
+
+    def call_find_wall_service(self):
+
+        self.get_logger().info(" Calling find_wall service...")
+        
+        # Wait for service to become available
+        self.get_logger().info("Waiting for find_wall service...")
+        if not self.find_wall_client.wait_for_service(timeout_sec=10.0):
+            self.get_logger().error("find_wall service not available after 10 seconds!")
+            return False
+        
+        # Create and send service request
+        request = FindWall.Request()
+        self.get_logger().info("Sending find_wall request...")
+        
+        try:
+            # Call service with timeout
+            future = self.find_wall_client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=60.0)
+            
+            # Check service response
+            if future.result() is not None:
+                response = future.result()
+                if response.wallfound:
+                    self.get_logger().info(" Wall found and robot aligned successfully!")
+                    self.wall_found = True
+                    return True
+                else:
+                    self.get_logger().warn(" find_wall service returned wallfound=False")
+                    return False
+            else:
+                self.get_logger().error(" No response from /find_wall service (timeout)")
+                return False
+                
+        except Exception as e:
+            self.get_logger().error(f" find_wall service call failed: {str(e)}")
+            return False
+
+    def start_odom_recording(self):
+
+        self.get_logger().info(" Starting odometry recording...")
+        
+        # Wait for action server to become available
+        self.get_logger().info("Waiting for /record_odom action server...")
+        if not self.odom_action_client.wait_for_server(timeout_sec=10.0):
+            self.get_logger().error("/record_odom action server not available after 10 seconds!")
+            return False
+        
+        # Create and send action goal
+        goal_msg = OdomRecord.Goal()
+        self.get_logger().info("Sending odometry recording goal...")
+        
+        try:
+            # Send goal with timeout
+            send_goal_future = self.odom_action_client.send_goal_async(goal_msg)
+            rclpy.spin_until_future_complete(self, send_goal_future, timeout_sec=10.0)
+            
+            # Check goal acceptance
+            goal_handle = send_goal_future.result()
+            if goal_handle is not None and goal_handle.accepted:
+                self.get_logger().info(" Odometry recording started successfully!")
+                self.odom_recording = True
+                return True
+            else:
+                self.get_logger().error(" Odometry recording goal rejected")
+                return False
+                
+        except Exception as e:
+            self.get_logger().error(f" Failed to start odometry recording: {str(e)}")
+            return False
+
+    def control_loop(self):
+
+        # Only run control if preparation is complete
+        if not self.preparation_complete:
+            return
+        
+        # ==================== SAFETY CHECKS ====================
+        
+        # Ensure we have valid laser data before proceeding
+        if self.ranges is None:
+            # Don't spam warnings, just stop the robot safely
+            self.stop_robot()
+            return
+        
+        # ==================== WALL FOLLOWING BANG-BANG CONTROL ====================
+        
+        try:
+            # Calculate required velocities based on current sensor readings using bang-bang control
+            linear_vel, angular_vel = self.calculate_wall_following_control()
+            
+            # Send velocity commands to robot
+            self.publish_velocity(linear_vel, angular_vel)
+            
+            # Log detailed control information periodically (every 2 seconds)
+            current_time = self.get_clock().now().nanoseconds / 1e9
+            if not hasattr(self, '_last_detailed_log_time'):
+                self._last_detailed_log_time = current_time
+            
+            if (current_time - self._last_detailed_log_time) > 2.0:
+                distances = self.get_control_distances()
+                self.get_logger().info(
+                    f"Bang-bang control status - Front: {distances['front']:.3f}m, "
+                    f"Right: {distances['right']:.3f}m, "
+                    f"Linear: {linear_vel:.3f}m/s, Angular: {angular_vel:.3f}rad/s"
+                )
+                self._last_detailed_log_time = current_time
+            
+        except Exception as e:
+            # Handle any control calculation errors gracefully
+            self.get_logger().error(f"Bang-bang control loop error: {str(e)}")
+            self.stop_robot()
+
+
+def main(args=None):
+
+    # Initialize ROS 2
+    rclpy.init(args=args)
+    
+    # Create the wall following controller node
+    controller = WallFollowing()
+    
+    try:
+
+        controller.get_logger().info(" Bang-bang wall following system running - Press Ctrl+C to stop")
+        rclpy.spin(controller)
+        
+    except KeyboardInterrupt:
+        # Handle Ctrl+C gracefully
+        controller.get_logger().info(" Bang-bang wall following stopped by user")
+        
+    except Exception as e:
+        # Handle unexpected errors
+        controller.get_logger().error(f" Unexpected error: {str(e)}")
+        
+    finally:
+        # Clean shutdown
+        controller.get_logger().info(" Shutting down bang-bang wall following system...")
+        controller.stop_robot()
+        controller.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
