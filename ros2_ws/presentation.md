@@ -153,6 +153,14 @@ ros2 action send_goal
 
 ros2 action send_goal /go_to_pose leo_description/action/GoToPose "{x: -8.0, y: 6.0, yaw: 1.57}"
 
+
+roscd; cd ../src
+rosbag record -O laser.bag laser_scan
+rosbag info laser.bag
+rosbag play -l laser.bag
+rostopic echo /scan/ranges[100]
+rqt_plot /scan/ranges[100]
+
 ```
 
 
@@ -171,19 +179,13 @@ rosservice call /find_wall
 
 
 
-roscd; cd ../src
-rosbag record -O laser.bag laser_scan
-rosbag info laser.bag
-rosbag play -l laser.bag
-rostopic echo /laser_scan/ranges[100]
-rqt_plot /laser_scan/ranges[100]
+
 rqt_graph
-rqt_plot
+rqt_plot  /record_odom
+rostopic info /record_odom
 rqt_console
 
 
-rostopic echo /laser_scan/ranges[100]
-rqt_plot /laser_scan/ranges[100]
 
 rosrun actionlib_tools axclient.py /record_odom ros_wall_following/OdomRecordAction
 rosrun rviz rviz
