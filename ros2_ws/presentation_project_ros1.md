@@ -12,7 +12,7 @@ and if you filter based on the topics, now you can see there is four topics high
 
 ---
 
-rqt_plot : here you have a graphical view of some of the data which is maybe difficult to interpret in a numerical way, like the laser scan data which is a large trunk of array, so you can use this tool to view some of the critical data and get a Intuition of what's going on, like here the range[xx] from laser scan message indicates the right side laser beam of robot, which meaning the distance towards wall is changing this way.
+rqt_plot : here you have a graphical view of some of the data which is maybe difficult to interpret in a numerical way, like the (odom) laser scan data which is a large trunk of array, so you can use this tool to view some of the critical data and get a Intuition of what's going on, like here the range[xx] from laser scan message indicates the right side laser beam of robot, which meaning the distance towards wall is changing this way.
 
 ---
 
