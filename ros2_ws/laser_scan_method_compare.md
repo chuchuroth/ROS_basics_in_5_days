@@ -14,6 +14,11 @@ distance = self.scan.ranges[right_idx]
     left_idx = len(ranges) - 1    # Left side (270 degrees)
 ```
 
+```
+    # Use specific rays for wall following (project convention)
+    right_side_ray = 145 if len(ranges) > 145 else 0
+```
+
 **What it does:**
 - Calculates the **exact index** for 90° to the right of center
 - Gets the **single distance reading** at that specific angle
