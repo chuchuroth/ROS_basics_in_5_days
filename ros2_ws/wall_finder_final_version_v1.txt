@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from wall_follower_interfaces.srv import FindWall
+import numpy as np
+import math
+import time
+
+
+class WallFinder(Node):
+    def __init__(self):
+        super().__init__('wall_finder')
+
+        # Publisher for robot velocity
+        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+
+        # Subscriber to laser scan
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
+
+        # Service server
+        self.srv = self.create_service(FindWall, '/find_wall', self.handle_find_wall)
+
+        # Laser scan data
+        self.ranges = None
+        self.num_ranges = None
+        self.angle_min = None
+        self.angle_increment = None
+
+        self.get_logger().info("WallFinder service server ready.")
+
+    def scan_callback(self, msg: LaserScan):
+        ranges = np.array(msg.ranges)
+        self.ranges = np.where(np.isfinite(ranges), ranges, 10.0)
+        self.num_ranges = len(self.ranges)
+        self.angle_min = msg.angle_min
+        self.angle_increment = msg.angle_increment
+
+    def angle_to_index(self, angle_deg):
+        """Convert an angle in degrees to the nearest index in ranges."""
+        if self.angle_min is None or self.angle_increment is None:
+            return None
+        angle_rad = math.radians(angle_deg)
+        idx = int((angle_rad - self.angle_min) / self.angle_increment)
+        return idx % self.num_ranges
+
+    def average_range(self, center_idx, window=2):
+        if self.ranges is None:
+            return float('inf')
+        idxs = [(center_idx + i) % self.num_ranges for i in range(-window, window + 1)]
+        return float(np.mean([self.ranges[i] for i in idxs]))
+
+    def rotate_until_condition(self, condition_fn, direction, timeout_sec=16.0):
+        """Rotate until condition_fn() is True or timeout."""
+        twist = Twist()
+        start_time = time.time()
+        while rclpy.ok() and not condition_fn():
+            if time.time() - start_time > timeout_sec:
+                self.get_logger().warn("Rotation timeout reached, moving to next step.")
+                break
+            twist.angular.z = direction
+            self.cmd_pub.publish(twist)
+            rclpy.spin_once(self, timeout_sec=0.05)
+        twist.angular.z = 0.0
+        self.cmd_pub.publish(twist)
+
+    def move_until_close(self, target_dist=0.3, timeout_sec=10.0):
+        twist = Twist()
+        start_time = time.time()
+        front_idx = self.angle_to_index(0)
+        while rclpy.ok() and self.average_range(front_idx) > target_dist:
+            if time.time() - start_time > timeout_sec:
+                self.get_logger().warn("Move timeout reached.")
+                break
+            twist.linear.x = 0.02
+            self.cmd_pub.publish(twist)
+            rclpy.spin_once(self, timeout_sec=0.05)
+        twist.linear.x = 0.0
+        self.cmd_pub.publish(twist)
+
+    def handle_find_wall(self, request, response):
+        self.get_logger().info("Starting wall-finding sequence...")
+
+        if self.ranges is None:
+            self.get_logger().error("No laser data yet.")
+            response.wallfound = False
+            return response
+
+        front_idx = self.angle_to_index(0)
+        right_idx = self.angle_to_index(-90)  # right side
+
+        # Step 1: Rotate until facing nearest wall (front is min)
+        def front_is_min():
+            return np.argmin(self.ranges) == front_idx
+        direction = 0.3  # CCW rotation
+        self.rotate_until_condition(front_is_min, direction)
+
+        # Step 2: Move forward until close
+        self.move_until_close(0.3)
+
+        # Step 3: Rotate until wall is on right side (within tolerance)
+        tolerance_deg = 15
+        tolerance_idx = int(self.num_ranges * tolerance_deg / 360.0)
+
+        def right_is_min():
+            return abs(np.argmin(self.ranges) - right_idx) <= tolerance_idx
+
+        self.rotate_until_condition(right_is_min, -0.3)
+
+        self.get_logger().info("Wall found and aligned. Ready for wall-following.")
+        response.wallfound = True
+        return response
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = WallFinder()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
