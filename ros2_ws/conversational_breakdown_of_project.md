@@ -1,16 +1,13 @@
 
 
-Here’s a simple, conversational breakdown of the project so you can confidently demo it.
-
----
 
 ## Project Overview
 
-We built a ROS package that makes a simulated robot:
 
-1. **Find the nearest wall**.
-2. **Follow that wall** while keeping a fixed distance.
-3. **Record its odometry** (where it’s been and how far it’s traveled).
+
+
+
+
 
 Everything runs in a Gazebo simulation with a TurtleBot3.
 
