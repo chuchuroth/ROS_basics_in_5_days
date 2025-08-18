@@ -41,7 +41,7 @@ finally let's have a look at the package structure, there are four files, in ros
 
 - **wall_following.py**:  The main node that implements the wall following behavior, Overall role: This node controls movement once the robot is positioned next to the wall. It also starts the odometry recording action before driving.
 
-- **odom_recorder.py**: Action server to record odometry data
+- **odom_recorder.py**: Action server to record odometry data, running in the background, record where it's been and how far it has been traveled.
 
 - **odom_result_client.py** which is used to call the action server to get the data separately, to view the data in a separate terminals.
 
