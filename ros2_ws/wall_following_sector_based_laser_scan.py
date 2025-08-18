@@ -98,7 +98,7 @@ class WallFollowing(Node):
         
         # Speed parameters
         self.forward_speed = 0.1            # m/s - normal forward speed
-        self.turn_speed = 0.3               # rad/s - normal turning speed
+        self.turn_speed = 0.4               # rad/s - normal turning speed
         
         # ==================== STATE VARIABLES ====================
         
