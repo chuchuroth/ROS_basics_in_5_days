@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
+from sensor_msgs.msg import LaserScan
+from geometry_msgs.msg import Twist
+from wall_follower_interfaces.srv import FindWall
+from wall_follower_interfaces.action import OdomRecord
+import numpy as np
+
+class SimpleWallFollower(Node):
+    def __init__(self):
+        super().__init__('simple_wall_follower')
+
+        # Publisher and subscriber
+        self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.laser_callback, 10)
+
+        # Service and Action clients
+        self.find_wall_client = self.create_client(FindWall, '/find_wall')
+        self.odom_action_client = ActionClient(self, OdomRecord, '/record_odom')
+
+        # Store latest scan
+        self.ranges = None
+        self.angle_increment = None
+        self.num_ranges = None
+
+        # Parameters
+        self.min_dist = 0.2
+        self.max_dist = 0.3
+        self.front_threshold = 0.5
+        self.forward_speed = 0.15
+        self.turn_speed = 0.3
+        self.sharp_turn_speed = 0.8
+
+        self.get_logger().info("Simple Wall Follower initialized")
+
+        # Run preparation sequence
+        self.prepare_robot()
+
+        # Control loop timer (10 Hz) - starts only after preparation
+        self.timer = self.create_timer(0.1, self.control_loop)
+
+    # --------------------------
+    # Preparation sequence
+    # --------------------------
+    def prepare_robot(self):
+        """Call find_wall service and start odometry recording before following wall"""
+        if not self.call_find_wall_service():
+            self.get_logger().error("Could not find wall, aborting")
+            return
+
+        if not self.start_odom_recording():
+            self.get_logger().error("Could not start odom recording, aborting")
+            return
+
+        self.get_logger().info("Preparation complete - starting wall following")
+
+    def call_find_wall_service(self):
+        """Synchronous service call to /find_wall"""
+        self.get_logger().info("Waiting for /find_wall service...")
+        if not self.find_wall_client.wait_for_service(timeout_sec=10.0):
+            self.get_logger().error("/find_wall service not available")
+            return False
+
+        req = FindWall.Request()
+        self.get_logger().info("Calling /find_wall service...")
+        future = self.find_wall_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=60.0)
+
+        if future.result() is not None:
+            if future.result().wallfound:
+                self.get_logger().info("Wall found successfully!")
+                return True
+            else:
+                self.get_logger().warn("find_wall service returned wallfound=False")
+                return False
+        else:
+            self.get_logger().error("No response from /find_wall service")
+            return False
+
+    def start_odom_recording(self):
+        """Send goal to /record_odom action server"""
+        self.get_logger().info("Waiting for /record_odom action server...")
+        if not self.odom_action_client.wait_for_server(timeout_sec=10.0):
+            self.get_logger().error("/record_odom action server not available")
+            return False
+
+        goal_msg = OdomRecord.Goal()
+        self.get_logger().info("Sending goal to /record_odom...")
+        send_goal_future = self.odom_action_client.send_goal_async(goal_msg)
+        rclpy.spin_until_future_complete(self, send_goal_future, timeout_sec=10.0)
+
+        goal_handle = send_goal_future.result()
+        if not goal_handle or not goal_handle.accepted:
+            self.get_logger().error("Odom recording goal rejected")
+            return False
+
+        self.get_logger().info("Odom recording started")
+        return True
+
+    # --------------------------
+    # Main control loop
+    # --------------------------
+    def laser_callback(self, msg: LaserScan):
+        ranges = np.array(msg.ranges)
+        # Replace inf/NaN with a large safe value
+        self.ranges = np.where(np.isfinite(ranges), ranges, 10.0)
+        self.angle_increment = msg.angle_increment
+        self.num_ranges = len(ranges)
+
+    def control_loop(self):
+        if self.ranges is None:
+            return
+
+        num = self.num_ranges
+        right_idx = int(num * 0.75)  # ~270 degrees
+        front_indices = list(range(-2, 3))  # ±2 beams around 0°
+        right_indices = list(range(right_idx - 2, right_idx + 3))
+
+        # Wrap indices for front
+        front_dists = []
+        for i in front_indices:
+            idx = i if i >= 0 else num + i
+            front_dists.append(self.ranges[idx])
+        right_dists = [self.ranges[i] for i in right_indices]
+
+        # Average for stability
+        front_dist = float(np.mean(front_dists))
+        right_dist = float(np.mean(right_dists))
+
+        # Control decision
+        twist = Twist()
+
+        if front_dist < self.front_threshold:
+            twist.linear.x = self.forward_speed * 0.6
+            twist.angular.z = self.sharp_turn_speed
+        elif right_dist > self.max_dist:
+            twist.linear.x = self.forward_speed
+            twist.angular.z = -self.turn_speed
+        elif right_dist < self.min_dist:
+            twist.linear.x = self.forward_speed
+            twist.angular.z = self.turn_speed
+        else:
+            twist.linear.x = self.forward_speed
+            twist.angular.z = 0.0
+
+        self.cmd_pub.publish(twist)
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = SimpleWallFollower()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
