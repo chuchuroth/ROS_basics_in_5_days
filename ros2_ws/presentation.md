@@ -1,3 +1,54 @@
+hello everyone, today i am going to share a ros project demo from the course ROS2 Basics in 5 days, this Project is to design a ros package to control the turtlebot robot to do a wall following movement, because I already did the demo for the course ROS Basics in 5 days. I'll skip the Basic ros concepts and the Debugging Tools, and talk mainly About two topics, the laser scan data-analysis Methods, and the Control logic algorithm.
+
+so first let me record some laser data into rosbag so we can analyse .
+and let me launch the package. another tip is add a small debug print: for example add a small debug print at startup in both scripts so you always know how your LiDAR scan is being interpreted. It will log angle_min, angle_max, angle_increment and what direction ray 0 corresponds to.) in scripts so in log output can show where is the problem in details, it#s easier to debug problem one by one, first you need meaningful feedback to see where went wrong
+
+
+
+
+
++ rosbags 
++ rostopic echo /laser_scan/ranges[100]
++ rqt_plot /laser_scan/ranges[100]
+
+better to show laser scan data in graphical way, 
+how many sectors are divided,
+how each sector data look like (the right side should be the most unchanged, since the robot is following right side wall)
+so this is another exmpla to make good use of ros tool 
+
+
+
+
+i'll start with wall_follower and bangbang 
+
+#### i have a Standard ROS 2 node structure, and let me explain a bit about each section
+       1. Declare parameters first
+      2. Create publishers/subscribers
+     3. Services and Actions
+
+
+
+
+
++ then i'll explain wall_finder
+this node is the most complex one,
+
+
+
+another is to introduce different algos, before you try more advanced algorithms, it would make more sense if you tune your basic parameters like linear speed and angular speed and the ratio of them, and see the result on robot, if you are working with virtual robot in a simulator , parameters like inertia would makes a difference.  to make a smooth route, you need to consider not only your codes but sometimes it has a lot to do with the physical configuration with your robot, whether it's a real one or a virtual robot. most of the time, your algo works fine, and you can improve your robots performance by simply tuning the parameters.
+
+
+
+
+
+
+
+
++ only mention algo last sentence
+you can use a bang-bang, pid , state machine and so on, there are many algorithms to improve the accuracy and efficiency of your robot system, like to make it run more smoothly by implementing a PID controller or state machine.
+
+
+
 
 
 split project into two parts: one for service interface which is compiled using cmake, the other is main package compiled using python, because conflict between Python and CMake builds. Let's split this into two packages:
