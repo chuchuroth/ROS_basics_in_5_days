@@ -8,9 +8,20 @@ and let me launch the package. another tip is add a small debug print: for examp
 
 
 
-+ rosbags 
-+ rostopic echo /scan/ranges[100]
-+ rqt_plot /scan/ranges[100]
++ ros2 bag record /odom /scan /cmd_vel
+
++ ros2 bag info Name.bag
+
++ ros2 bag play rosbag2_2025_08_19-07_50_12 --loop 
+
++ ros2 topic echo /odom --csv > odom.csv && ros2 topic echo /scan --csv > scan.csv && ros2 topic echo /cmd_vel --csv > cmd_vel.csv
+
+
++ to view the last row: tail -n 1 odom.csv  (which column)
+
++ to view the column:
+cut -d',' -f1,2 odom.csv 
+cut -d',' -f100 scan.csv
 
 better to show laser scan data in graphical way, 
 how many sectors are divided,
