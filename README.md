@@ -1,3 +1,8 @@
+to have clean workspace: rm -rf build install log
+
+
+---
+
 # ros 1
 
 # Topic
@@ -92,6 +97,7 @@ ros2 node info /mars_rover_1
 ---
 
 ```
+
 ros2 topic echo /cmd_vel
 ros2 topic echo /laser_scan --once  (the last one)
 ros2 topic echo /laser_scan --field ranges
@@ -132,6 +138,31 @@ ros2 action send_goal <action_name> <action_type> <values>  (call action)
 ros2 action send_goal /rotate leo_description/action/Rotate "{rotation_time: 5.0}" -f (f for feedback)
 "
 ```
+
+
+
+---
+
+
+
+
+
+ros2 service list | grep find_wall
+ros2 service call /find_wall wall_follower_interfaces/srv/FindWall '{}'
+
+ros2 action list
+ros2 action info /record_odom -t
+ros2 action send_goal
+
+ros2 action send_goal /go_to_pose leo_description/action/GoToPose "{x: -8.0, y: 6.0, yaw: 1.57}"
+
+
+roscd; cd ../src
+rosbag record -O laser.bag laser_scan
+rosbag info laser.bag
+rosbag play -l laser.bag
+rostopic echo /scan/ranges[100]
+rqt_plot /scan/ranges[100]
 
 
 
