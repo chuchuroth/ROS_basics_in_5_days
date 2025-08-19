@@ -1,5 +1,6 @@
-hello everyone, today i am going to share a ros project demo from the course ROS2 Basics in 5 days, this Project is to design a ros package to control the turtlebot robot to do a wall following movement, because I already did the demo for the course ROS Basics in 5 days. I'll skip the Basic ros concepts and the Debugging Tools, and talk mainly About two topics, the laser scan data-analysis Methods, and the Control logic algorithm.
+hello today i am going to share a ros project demo from the course ROS2 Basics in 5 days, because I already did the demo for the course ROS Basics in 5 days. I'll skip the Basic ros concepts and the Debugging Tools, and talk mainly About two topics, the laser scan data-analysis Methods, and the Control logic algorithm.
 
+this Project is to design a ros package to control the turtlebot robot to do a wall following movement, 
 so first let me record some laser data into rosbag so we can analyse .
 and let me launch the package. another tip is add a small debug print: for example add a small debug print at startup in both scripts so you always know how your LiDAR scan is being interpreted. It will log angle_min, angle_max, angle_increment and what direction ray 0 corresponds to.) in scripts so in log output can show where is the problem in details, it#s easier to debug problem one by one, first you need meaningful feedback to see where went wrong
 
@@ -8,8 +9,8 @@ and let me launch the package. another tip is add a small debug print: for examp
 
 
 + rosbags 
-+ rostopic echo /laser_scan/ranges[100]
-+ rqt_plot /laser_scan/ranges[100]
++ rostopic echo /scan/ranges[100]
++ rqt_plot /scan/ranges[100]
 
 better to show laser scan data in graphical way, 
 how many sectors are divided,
@@ -46,6 +47,7 @@ another is to introduce different algos, before you try more advanced algorithms
 
 + only mention algo last sentence
 you can use a bang-bang, pid , state machine and so on, there are many algorithms to improve the accuracy and efficiency of your robot system, like to make it run more smoothly by implementing a PID controller or state machine.
+and how to improve the accuracy and efficiency of your robot system, like to make it run more smoothly by implementing a PID controller or state machine. 
 
 
 
