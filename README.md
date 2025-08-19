@@ -16,7 +16,7 @@ rosmsg show std\_msgs/Int32
 rostopic list
 rostopic info
 rostopic echo
- 
+
 
 ```
 
@@ -54,17 +54,15 @@ eg. navigation system - has three parts, goal, feedback ,result
 
 
 # example: the three parts of action message
-rostopic echo /ardrone\_action\_server/goal   
-rostopic echo /ardrone\_action\_server/feedback
-rostopic echo /ardrone\_action\_server/result
+rostopic echo /action_server/goal   
+rostopic echo /action_server/feedback
+rostopic echo /action_server/result
 
-# Publishing directly into the /goal topic of the Action Server
-rostopic pub /
+# Publishing directly into the topic of the Action Server
+rostopic pub /goal
 
-rosrun actionlib\_tools axclient.py /<name\_of\_action\_server>  # use GUI tool to interact with an Action Server
-
-
-
+rosrun actionlib_tools axclient.py   # use GUI tool to interact with an Action Server
+rosrun actionlib_tools axclient.py  /record_odom  ros_wall_following/OdomRecordAction
 
 ```
 
@@ -75,15 +73,20 @@ rosrun actionlib\_tools axclient.py /<name\_of\_action\_server>  # use GUI tool 
 
 
 ```
-rosrun rviz rviz    # to know what the Robot was perceiving: In Global Options, select the Fixed Frame that suits you for the visualization of the data and The Add button
-
-rqt\_console
+ rviz 
+rqt_console  这个好像没用
 rqt_plot /scan/ranges[100]
+rqt_plot  /record_odom
+rqt_graph
 
 
-rosbag record -O laser.bag laser\_scan # record
-rosbag info name\_bag\_file.bag     # extract
-rosbag play name\_bag\_file.bag  \&\& rostopic echo /laser\_scan/ranges\[100] \&\& rqt\_plot /laser\_scan/ranges\[100]    # replay
+
+
+rosbag record /scan 
+rosbag info    
+rosbag play   
+
+
 
 ```
 
