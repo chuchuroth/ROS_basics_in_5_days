@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Wall Finder Service Node - 180° Forward Laser Simplified Version
-================================================================
+Wall Finder Service Node - 360° Full-Circle Laser Version
+=========================================================
 
 This ROS 2 node provides a service to find and align the robot with the nearest wall.
 The robot will:
@@ -10,17 +10,22 @@ The robot will:
 2. Move forward until 0.3m from the wall
 3. Rotate until the wall is positioned on the right side for wall following
 
-180-Degree Forward-Facing Laser Configuration:
-- Total points: 720 (indices 0-719) for real TurtleBot
-- Coverage: 180° forward-facing only (right to left)
-- 0° (right): index 0
-- 90° (front): index 360
-- 180° (left): index 719
-- Note: No rear coverage - robot only sees forward hemisphere
+360-Degree Full-Circle Laser Configuration:
+- Coverage: Full 360° around robot
+- angle_min ≈ -179° (rear-left)
+- angle_max ≈ +180° (rear-right)  
+- angle_increment ≈ 0.5° per reading
+- Total points ≈ 720
+- Key directions calculated dynamically from laser params:
+  * Front (0°): calculated index
+  * Right (+90°): calculated index
+  * Left (-90°): calculated index
+  * Rear (±180°): calculated index
 
 SECTOR-BASED ANALYSIS METHOD:
 This implementation uses the sector-based laser analysis method for improved
-wall detection, dividing the 180° laser scan into meaningful sectors.
+wall detection, dividing the 360° laser scan into meaningful sectors with
+correct geometry calculations.
 
 IMPORTANT: This node ONLY handles wall finding. Obstacle detection and avoidance
 during wall following is handled by the separate wall_following node.
@@ -191,20 +196,69 @@ class WallFinder(Node):
         # Log laser info once
         if not hasattr(self, '_laser_logged'):
             self._laser_logged = True
-            self.get_logger().info(f"180° Laser: {self.num_ranges} points, 0°-180° coverage")
+            self.get_logger().info("LASER CALLBACK TRIGGERED! Processing first laser message...")
+            self.get_logger().info(f"LaserScan config: angle_min={self.angle_min:.3f} rad, "
+                                  f"angle_max={self.angle_max:.3f} rad, "
+                                  f"angle_increment={self.angle_increment:.6f} rad")
+            self.get_logger().info(f"Total ranges: {self.num_ranges}")
+            
+            # Calculate indices using the CORRECT method for actual laser geometry
+            if self.ranges is not None and self.angle_min is not None and self.angle_increment is not None:
+                # CORRECT calculations for actual laser: angle_min=-3.12, angle_max=3.14
+                front_idx = int((0.0 - self.angle_min) / self.angle_increment)  # 0° relative to angle_min
+                right_idx = int((math.pi/2 - self.angle_min) / self.angle_increment)  # +90° relative to angle_min
+                left_idx = int((-math.pi/2 - self.angle_min) / self.angle_increment)  # -90° relative to angle_min
+                back_idx = int((math.pi - self.angle_min) / self.angle_increment)  # 180° relative to angle_min
+                
+                self.get_logger().info(f"CORRECT indices for actual laser geometry:")
+                self.get_logger().info(f"  Front (0°): {front_idx}")
+                self.get_logger().info(f"  Right (+90°): {right_idx}")
+                self.get_logger().info(f"  Left (-90°): {left_idx}")
+                self.get_logger().info(f"  Back (180°): {back_idx}")
+            
+            # Show what was wrong before (assuming angle_min=0)
+            if self.angle_increment is not None:
+                broken_front = 0  # This was wrong - assumed angle_min=0
+                broken_right = int((90 * math.pi / 180) / self.angle_increment)  # This was wrong
+                self.get_logger().info(f"Previous WRONG method: front={broken_front}, right={broken_right}")
+                self.get_logger().info("Now using CORRECT geometry based on actual laser parameters")
 
     def get_standard_laser_indices_corrected(self):
         """
-        Get standard laser indices for 180-degree forward-facing laser
+        Get standard laser indices using CORRECT 360° laser geometry
+        
+        For actual laser with angle_min≈-3.12 and angle_max≈3.14:
+        - Front (0°): calculated as (0 - angle_min) / angle_increment
+        - Right (+90°): calculated as (π/2 - angle_min) / angle_increment
+        - Back (180°): calculated as (π - angle_min) / angle_increment  
+        - Left (-90°): calculated as (-π/2 - angle_min) / angle_increment
         
         Returns:
             dict: Dictionary with standard direction indices
         """
+        if self.ranges is None or self.angle_min is None or self.angle_increment is None:
+            return {
+                'front': 358,  # Approximate for angle_min=-3.12
+                'right': 179,
+                'back': 0,
+                'left': 537
+            }
+        
+        # CORRECT method for actual laser geometry
+        front_idx = int((0.0 - self.angle_min) / self.angle_increment)  # 0° relative to angle_min
+        right_idx = int((math.pi/2 - self.angle_min) / self.angle_increment)  # +90° relative to angle_min
+        back_idx = int((math.pi - self.angle_min) / self.angle_increment)  # 180° relative to angle_min
+        left_idx = int((-math.pi/2 - self.angle_min) / self.angle_increment)  # -90° relative to angle_min
+        
+        # Ensure all indices are within valid range
+        def clamp_index(idx):
+            return max(0, min(idx, len(self.ranges) - 1))
+        
         return {
-            'right': 0,        # 0° - right side
-            'front': 360,      # 90° - forward direction
-            'left': 719,       # 180° - left side
-            'back': None       # No rear coverage
+            'front': clamp_index(front_idx),
+            'right': clamp_index(right_idx),
+            'back': clamp_index(back_idx),
+            'left': clamp_index(left_idx)
         }
 
     def average_range(self, center_idx, window=2):
@@ -284,8 +338,9 @@ class WallFinder(Node):
         """
         twist = Twist()
         start_time = time.time()
-        # Get front index for 180° laser (index 360)
-        front_idx = 360
+        
+        # Calculate front index dynamically based on laser parameters
+        front_idx = int((0.0 - self.angle_min) / self.angle_increment) if self.angle_min is not None and self.angle_increment is not None else 360
         tolerance = 0.05  # 5cm tolerance for target distance
         
         # Check initial distance to determine movement direction
@@ -435,17 +490,17 @@ class WallFinder(Node):
                     self.get_logger().info(f"   Total callbacks processed: {self._scan_callback_count}")
         
         # Ensure we have fresh laser data
-        self.get_logger().info("📡 Ensuring fresh 180° laser data...")
+        self.get_logger().info("📡 Ensuring fresh 360° laser data...")
         for _ in range(5):  # Get more fresh samples
             rclpy.spin_once(self, timeout_sec=0.2)
             time.sleep(0.1)
         
-        # Get standard laser indices for 180° laser
+        # Get standard laser indices for 360° laser (calculated dynamically)
         indices = self.get_standard_laser_indices_corrected()
-        front_idx = indices['front']  # 360
-        right_idx = indices['right']  # 0
+        front_idx = indices['front']  # Calculated from laser params
+        right_idx = indices['right']  # Calculated from laser params
         
-        self.get_logger().info(f"Using 180° laser indices - Front: {front_idx}, Right: {right_idx}")
+        self.get_logger().info(f"Using 360° laser indices - Front: {front_idx}, Right: {right_idx}")
         
         # ==================== STEP 1: FACE NEAREST WALL ====================
         self.get_logger().info("Step 1: Rotating to face nearest wall (180° scan analysis)...")
@@ -578,42 +633,53 @@ class WallFinder(Node):
         
     def analyze_180_degree_laser_data_sector_based(self):
         """
-        Sector-based 180-degree forward-facing laser analysis
+        Sector-based 360-degree full-circle laser analysis
         
-        This method uses the sector-based approach from the example file, dividing the 
-        180° laser scan into meaningful sectors for obstacle detection and wall finding.
+        This method uses the sector-based approach adapted for 360° laser coverage,
+        dividing the full laser scan into meaningful sectors for obstacle detection 
+        and wall finding with correct geometry calculations.
         
-        Sectors for 180° laser (adapted from example):
-        - Right: indices 0-19 (0°-4.75°)
-        - Front_Right: indices 20-60 (5°-15°) 
-        - Front_Center: indices 340-380 (85°-95°)
-        - Front_Left: indices 100-140 (25°-35°)
-        - Left: indices 141-179 (35.25°-44.75°)
-        - Far_Left: indices 580-719 (145°-179.75°)
+        Sectors are calculated dynamically based on actual laser parameters:
+        - Uses angle_min, angle_increment to calculate correct indices
+        - Covers full 360° around robot
+        - Adapts to different laser configurations
         
         Returns:
             dict: Sector-based analysis results with minimum distances per sector
         """
-        if self.ranges is None:
+        if self.ranges is None or self.angle_min is None or self.angle_increment is None:
             return None
         
-        self.get_logger().info("🔍 CONDUCTING SECTOR-BASED 180° LASER ANALYSIS...")
+        self.get_logger().info("🔍 CONDUCTING SECTOR-BASED 360° LASER ANALYSIS...")
+        self.get_logger().info(f"Laser geometry: angle_min={self.angle_min:.3f}, angle_increment={self.angle_increment:.6f}")
+        
+        # Log calculated front index for verification
+        calculated_front_idx = int((0.0 - self.angle_min) / self.angle_increment)
+        self.get_logger().info(f"Calculated front index (0°): {calculated_front_idx}")
         
         # ==================== SECTOR DEFINITIONS ====================
-        # Define sectors based on the example method, adapted for 180° laser
+        # Use CORRECT method for actual laser geometry
+        
+        # Helper function to convert angle to index using CORRECT geometry
+        def angle_to_index_correct(angle_deg):
+            """Convert angle to laser index using actual laser parameters"""
+            angle_rad = angle_deg * math.pi / 180.0
+            idx = int((angle_rad - self.angle_min) / self.angle_increment)
+            return max(0, min(idx, len(self.ranges) - 1))
+        
+        def angle_range_to_indices(start_deg, end_deg):
+            return (angle_to_index_correct(start_deg), angle_to_index_correct(end_deg))
+        
+        # Define sectors for 360° laser using CORRECT angle calculation
+        # For actual laser with angle_min≈-3.12: uses (angle - angle_min) / increment
+        # These angles are in the robot's coordinate system: 0°=front, +90°=left, -90°=right, ±180°=back
         sectors = {
-            "Right": (0, 19),           # 0°-4.75° - far right side
-            "Front_Right": (20, 60),    # 5°-15° - front-right quadrant
-            "Right_Mid": (61, 99),      # 15.25°-24.75° - right-middle
-            "Front_Left": (100, 140),   # 25°-35° - front-left quadrant  
-            "Left_Near": (141, 179),    # 35.25°-44.75° - near left side
-            "Left_Mid": (180, 259),     # 45°-64.75° - left-middle
-            "Left_Far": (260, 339),     # 65°-84.75° - far left side
-            "Front_Center": (340, 380), # 85°-95° - center front (most important)
-            "Front_Wide": (320, 400),   # 80°-100° - wide front area
-            "Left_Forward": (401, 480), # 100.25°-120° - left-forward
-            "Left_Side": (481, 560),    # 120.25°-140° - left side
-            "Far_Left": (561, 719)      # 140.25°-179.75° - far left
+            "Right": (angle_to_index_correct(70), angle_to_index_correct(110)),           # Right side wall (90° ± 20°)
+            "Front_Right": (angle_to_index_correct(20), angle_to_index_correct(70)),      # Front-right area  
+            "Front_Center": (angle_to_index_correct(-20), angle_to_index_correct(20)),    # Direct front (0° ± 20°)
+            "Front_Left": (angle_to_index_correct(-70), angle_to_index_correct(-20)),     # Front-left area
+            "Left": (angle_to_index_correct(-110), angle_to_index_correct(-70)),          # Left side (-90° ± 20°)
+            "Rear": (angle_to_index_correct(160), angle_to_index_correct(-160)),          # Rear area (wrap-around)
         }
         
         # ==================== SECTOR ANALYSIS ====================
@@ -624,34 +690,42 @@ class WallFinder(Node):
         sector_stats = {}
         
         for sector_name, (start_idx, end_idx) in sectors.items():
-            # Ensure indices are within valid range
-            start_idx = max(0, start_idx)
-            end_idx = min(len(self.ranges) - 1, end_idx)
-            
-            if start_idx <= end_idx and start_idx < len(self.ranges):
-                # Extract sector data
-                sector_ranges = ranges_array[start_idx:end_idx + 1]
+            # Handle wrap-around case for rear sector
+            if start_idx > end_idx:  # Wrap-around case (rear sector)
+                # Split into two parts: [start_idx, len-1] and [0, end_idx]
+                sector_ranges_1 = ranges_array[start_idx:]
+                sector_ranges_2 = ranges_array[:end_idx + 1]
+                sector_ranges = np.concatenate([sector_ranges_1, sector_ranges_2])
                 
                 # Filter out invalid readings
                 valid_sector_ranges = sector_ranges[np.isfinite(sector_ranges) & (sector_ranges > 0.0)]
                 
                 if len(valid_sector_ranges) > 0:
                     min_distance = np.min(valid_sector_ranges)
-                    min_idx_in_sector = np.argmin(sector_ranges) + start_idx
+                    min_idx_in_concat = np.argmin(sector_ranges)
+                    # Calculate actual index in original array
+                    if min_idx_in_concat < len(sector_ranges_1):
+                        min_idx_in_sector = start_idx + min_idx_in_concat
+                    else:
+                        min_idx_in_sector = min_idx_in_concat - len(sector_ranges_1)
                     avg_distance = np.mean(valid_sector_ranges)
+                    
+                    # Calculate actual angle using laser parameters
+                    min_angle_rad = self.angle_min + min_idx_in_sector * self.angle_increment
+                    min_angle_deg = min_angle_rad * 180.0 / math.pi
                     
                     min_distances[sector_name] = min_distance
                     sector_stats[sector_name] = {
                         'min_distance': min_distance,
                         'avg_distance': avg_distance,
                         'min_index': min_idx_in_sector,
-                        'min_angle': min_idx_in_sector * 0.25,  # 0.25° per index
+                        'min_angle': min_angle_deg,
                         'valid_readings': len(valid_sector_ranges),
                         'total_readings': len(sector_ranges),
                         'start_idx': start_idx,
                         'end_idx': end_idx,
-                        'coverage_angle_start': start_idx * 0.25,
-                        'coverage_angle_end': end_idx * 0.25
+                        'coverage_angle_start': (self.angle_min + start_idx * self.angle_increment) * 180.0 / math.pi,
+                        'coverage_angle_end': (self.angle_min + end_idx * self.angle_increment) * 180.0 / math.pi
                     }
                 else:
                     min_distances[sector_name] = float('inf')
@@ -664,12 +738,61 @@ class WallFinder(Node):
                         'total_readings': len(sector_ranges),
                         'start_idx': start_idx,
                         'end_idx': end_idx,
-                        'coverage_angle_start': start_idx * 0.25,
-                        'coverage_angle_end': end_idx * 0.25
+                        'coverage_angle_start': (self.angle_min + start_idx * self.angle_increment) * 180.0 / math.pi,
+                        'coverage_angle_end': (self.angle_min + end_idx * self.angle_increment) * 180.0 / math.pi
                     }
             else:
-                min_distances[sector_name] = float('inf')
-                sector_stats[sector_name] = None
+                # Normal case - no wrap-around
+                # Ensure indices are within valid range
+                start_idx = max(0, start_idx)
+                end_idx = min(len(self.ranges) - 1, end_idx)
+                
+                if start_idx <= end_idx and start_idx < len(self.ranges):
+                    # Extract sector data
+                    sector_ranges = ranges_array[start_idx:end_idx + 1]
+                    
+                    # Filter out invalid readings
+                    valid_sector_ranges = sector_ranges[np.isfinite(sector_ranges) & (sector_ranges > 0.0)]
+                    
+                    if len(valid_sector_ranges) > 0:
+                        min_distance = np.min(valid_sector_ranges)
+                        min_idx_in_sector = np.argmin(sector_ranges) + start_idx
+                        avg_distance = np.mean(valid_sector_ranges)
+                        
+                        # Calculate actual angle using laser parameters
+                        min_angle_rad = self.angle_min + min_idx_in_sector * self.angle_increment
+                        min_angle_deg = min_angle_rad * 180.0 / math.pi
+                        
+                        min_distances[sector_name] = min_distance
+                        sector_stats[sector_name] = {
+                            'min_distance': min_distance,
+                            'avg_distance': avg_distance,
+                            'min_index': min_idx_in_sector,
+                            'min_angle': min_angle_deg,  # Use actual calculated angle
+                            'valid_readings': len(valid_sector_ranges),
+                            'total_readings': len(sector_ranges),
+                            'start_idx': start_idx,
+                            'end_idx': end_idx,
+                            'coverage_angle_start': (self.angle_min + start_idx * self.angle_increment) * 180.0 / math.pi,
+                            'coverage_angle_end': (self.angle_min + end_idx * self.angle_increment) * 180.0 / math.pi
+                        }
+                    else:
+                        min_distances[sector_name] = float('inf')
+                        sector_stats[sector_name] = {
+                            'min_distance': float('inf'),
+                            'avg_distance': float('inf'),
+                            'min_index': None,
+                            'min_angle': None,
+                            'valid_readings': 0,
+                            'total_readings': len(sector_ranges),
+                            'start_idx': start_idx,
+                            'end_idx': end_idx,
+                            'coverage_angle_start': (self.angle_min + start_idx * self.angle_increment) * 180.0 / math.pi,
+                            'coverage_angle_end': (self.angle_min + end_idx * self.angle_increment) * 180.0 / math.pi
+                        }
+                else:
+                    min_distances[sector_name] = float('inf')
+                    sector_stats[sector_name] = None
         
         # ==================== FIND GLOBAL MINIMUM ====================
         # Find the sector with absolute minimum distance
@@ -685,16 +808,18 @@ class WallFinder(Node):
         
         # ==================== ROTATION DECISION ====================
         # Calculate rotation needed to align front with closest obstacle
-        front_center_idx = 360  # Front center index for 180° laser
+        # Use CORRECT front index calculation
+        front_center_idx = int((0.0 - self.angle_min) / self.angle_increment)
         
         if closest_sector_stats and closest_sector_stats['min_index'] is not None:
             target_idx = closest_sector_stats['min_index']
             angular_diff = target_idx - front_center_idx
-            angular_diff_degrees = angular_diff * 0.25
+            angular_diff_degrees = angular_diff * self.angle_increment * 180.0 / math.pi
             
-            # Determine rotation direction
-            if angular_diff == 0:
-                rotation_needed = "NONE - Already aligned"
+            # Determine rotation direction with tolerance
+            tolerance_indices = 5  # Allow ±5 indices tolerance (≈±2.5°)
+            if abs(angular_diff) <= tolerance_indices:
+                rotation_needed = "NONE - Already aligned (within tolerance)"
                 rotation_direction = 0
             elif angular_diff > 0:
                 rotation_needed = f"COUNTERCLOCKWISE by {angular_diff} indices ({angular_diff_degrees:.1f}°)"
@@ -721,9 +846,10 @@ class WallFinder(Node):
             'angular_difference_degrees': angular_diff_degrees,
             'rotation_needed': rotation_needed,
             'rotation_direction': rotation_direction,
-            'target_achieved': (angular_diff == 0),
+            'target_achieved': (abs(angular_diff) <= 5),  # Allow ±5 indices tolerance
             'total_laser_points': len(self.ranges),
-            'valid_sectors': len(valid_sectors)
+            'valid_sectors': len(valid_sectors),
+            'front_center_idx': front_center_idx  # Include for debugging
         }
         
         # Print analysis results
@@ -804,7 +930,8 @@ class WallFinder(Node):
         
         # Rotation decision
         self.get_logger().info(f" ROTATION DECISION:")
-        self.get_logger().info(f"   Current front index: 360 (90.0°)")
+        front_center_idx = int((0.0 - self.angle_min) / self.angle_increment) if hasattr(self, 'angle_min') and self.angle_min is not None else 358
+        self.get_logger().info(f"   Current front index: {front_center_idx} ({0.0:.1f}°)")
         if analysis['closest_sector_stats'] and analysis['closest_sector_stats']['min_index']:
             target_idx = analysis['closest_sector_stats']['min_index']
             target_angle = analysis['closest_sector_stats']['min_angle']
