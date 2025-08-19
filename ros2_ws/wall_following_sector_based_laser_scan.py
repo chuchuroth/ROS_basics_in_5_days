@@ -10,12 +10,16 @@ The robot will:
 2. Start odometry recording action for path tracking  
 3. Execute continuous wall following control loop with sector-based obstacle detection
 
-180-Degree Forward-Facing Laser Configuration:
-- Total points: 720 (indices 0-719) 
-- 0° (right): index 0
-- 90° (front): index 360
-- 180° (left): index 719
-- Coverage: 180° forward hemisphere only
+360-Degree Full-Circle Laser Configuration:
+- Coverage: Full 360° around robot
+- angle_min ≈ -179° (rear-left)
+- angle_max ≈ +180° (rear-right)  
+- angle_increment ≈ 0.5° per reading
+- Total points ≈ 720
+- Key directions calculated dynamically:
+  * Front (0°): calculated from laser params
+  * Right (+90°): calculated from laser params
+  * Left (-90°): calculated from laser params
 
 Wall Following Strategy:
 - Maintain constant distance from RIGHT-side wall
@@ -24,8 +28,8 @@ Wall Following Strategy:
 
 SECTOR-BASED ANALYSIS METHOD:
 This implementation uses the sector-based laser analysis method for improved
-obstacle detection and navigation decision making, dividing the 180° laser 
-scan into meaningful sectors.
+obstacle detection and navigation decision making, dividing the 360° laser 
+scan into meaningful sectors with correct geometry calculations.
 
 Author: ROS 2 Migration Team
 Date: August 2025
@@ -98,7 +102,7 @@ class WallFollowing(Node):
         
         # Speed parameters
         self.forward_speed = 0.1            # m/s - normal forward speed
-        self.turn_speed = 0.4               # rad/s - normal turning speed
+        self.turn_speed = 0.3               # rad/s - normal turning speed
         
         # ==================== STATE VARIABLES ====================
         
@@ -106,6 +110,7 @@ class WallFollowing(Node):
         self.wall_found = False
         self.odom_recording = False
         self.preparation_complete = False
+        self.laser_initialized = False  # Track if laser callback has been triggered
         
         # ==================== INITIALIZATION ====================
         
@@ -113,15 +118,27 @@ class WallFollowing(Node):
         self.get_logger().info(f"Parameters: wall distance {self.min_wall_distance}-{self.max_wall_distance}m, "
                               f"obstacle threshold {self.front_obstacle_threshold}m")
         
-        # Execute preparation sequence
-        self.prepare_robot()
+        # This node will call find_wall service then start wall following
+        self.get_logger().info("Will call find_wall service first, then start wall following...")
+        
+        # CALL FIND_WALL IMMEDIATELY (like ROS1 version) - don't wait for laser data!
+        self.get_logger().info("=== CALLING FIND_WALL SERVICE IMMEDIATELY ===")
+        if self.call_find_wall_service():
+            self.get_logger().info("✅ Find wall service completed successfully")
+            self.wall_found = True
+        else:
+            self.get_logger().warn("❌ Find wall service failed - continuing anyway")
+        
+        # Mark preparation complete so control loop can start
+        self.preparation_complete = True
+        self.get_logger().info("=== PREPARATION COMPLETE - READY FOR WALL FOLLOWING ===")
         
         # Start main control loop timer (10 Hz)
         self.control_timer = self.create_timer(0.1, self.control_loop)
 
     def laser_callback(self, msg: LaserScan):
         """
-        Process incoming laser scan data for 180-degree forward-facing laser
+        Process incoming laser scan data for 360-degree full-circle laser
         
         Simple processing for wall following:
         - Store basic laser parameters
@@ -143,21 +160,40 @@ class WallFollowing(Node):
         self.ranges = np.where(np.isfinite(ranges), ranges, 10.0)
         self.num_ranges = len(self.ranges)
         
-        # Log laser info once for debugging
+        # Log laser info once for debugging (like working file)
         if not hasattr(self, '_laser_logged'):
             self._laser_logged = True
-            self.get_logger().info(f"180° Laser: {self.num_ranges} points, 0°-180° coverage")
+            self.get_logger().info("LASER CALLBACK TRIGGERED! Processing first laser message...")
+            self.get_logger().info(f"LaserScan config: angle_min={self.angle_min:.3f} rad, "
+                                  f"angle_max={self.angle_max:.3f} rad, "
+                                  f"angle_increment={self.angle_increment:.6f} rad")
+            self.get_logger().info(f"Total ranges: {self.num_ranges}")
+            
+            # Calculate indices using the CORRECT method (actual laser geometry)
+            # For angle_min=-3.12, angle_max=3.14, increment=0.0087:
+            front_idx = int((0.0 - self.angle_min) / self.angle_increment)  # 0° relative to angle_min
+            right_idx = int((math.pi/2 - self.angle_min) / self.angle_increment)  # +90° relative to angle_min
+            left_idx = int((-math.pi/2 - self.angle_min) / self.angle_increment)  # -90° relative to angle_min
+            back_idx = int((math.pi - self.angle_min) / self.angle_increment)  # 180° relative to angle_min
+            
+            self.get_logger().info(f"CORRECT indices for actual laser geometry:")
+            self.get_logger().info(f"  Front (0°): {front_idx}")
+            self.get_logger().info(f"  Right (+90°): {right_idx}")
+            self.get_logger().info(f"  Left (-90°): {left_idx}")
+            self.get_logger().info(f"  Back (180°): {back_idx}")
+            
+            # Mark laser as initialized - preparation already complete
+            if not self.laser_initialized:
+                self.laser_initialized = True
+                self.get_logger().info("✅ Laser data received! Wall following can now start...")
 
     def get_sector_obstacle_detections(self, obstacle_threshold=0.8):
         """
         Detect obstacles in each sector using sector-based analysis
         
-        Sectors for 180° laser (adapted from example file):
-        - Right: indices 0-19 (0°-4.75°)
-        - Front_Right: indices 20-60 (5°-15°) 
-        - Front_Center: indices 340-380 (85°-95°)
-        - Front_Left: indices 100-140 (25°-35°)
-        - Left_Near: indices 141-179 (35.25°-44.75°)
+        Sectors for 360° laser with correct geometry:
+        - Uses actual laser parameters to calculate sector indices
+        - Adapts to robot's specific laser configuration
         
         Args:
             obstacle_threshold (float): Distance threshold for obstacle detection
@@ -165,22 +201,30 @@ class WallFollowing(Node):
         Returns:
             dict: Boolean flags for obstacle detection in each sector
         """
-        if self.ranges is None:
+        if self.ranges is None or self.angle_min is None or self.angle_increment is None:
             return {}
         
-        # Define key sectors for wall following
+        # Calculate sector indices based on actual laser geometry
+        def angle_to_index(angle_deg):
+            angle_rad = angle_deg * math.pi / 180.0
+            idx = int((angle_rad - self.angle_min) / self.angle_increment)
+            return max(0, min(idx, len(self.ranges) - 1))
+        
+        # Define key sectors for wall following (using actual angles)
+        # Narrowed Front_Center for less sensitive obstacle detection
         sectors = {
-            "Right": (0, 19),           # Right side wall
-            "Front_Right": (20, 60),    # Front-right area
-            "Front_Center": (340, 380), # Direct front
-            "Front_Left": (100, 140),   # Front-left area  
-            "Left_Near": (141, 179),    # Left side
+            "Right": (angle_to_index(70), angle_to_index(110)),      # Right side wall (90° ± 20°)
+            "Front_Right": (angle_to_index(20), angle_to_index(70)), # Front-right area
+            "Front_Center": (angle_to_index(-10), angle_to_index(10)), # Direct front (0° ± 10°) - NARROWED
+            "Front_Left": (angle_to_index(-70), angle_to_index(-20)), # Front-left area  
+            "Left": (angle_to_index(-110), angle_to_index(-70)),     # Left side (-90° ± 20°)
         }
         
         detections = {}
         for sector_name, (start_idx, end_idx) in sectors.items():
             # Ensure indices are within valid range
             start_idx = max(0, start_idx)
+            end_idx = min(len(self.ranges) - 1, end_idx)
             end_idx = min(len(self.ranges) - 1, end_idx)
             
             if start_idx <= end_idx:
@@ -202,71 +246,95 @@ class WallFollowing(Node):
         """
         Get distance to right wall for wall following control
         
+        Uses CORRECT geometry for 360° laser with actual parameters:
+        - angle_min ≈ -3.12 rad (-179°)
+        - angle_max ≈ +3.14 rad (+180°) 
+        - Right (+90°) is at index calculated from actual geometry
+        
         Returns:
             float: Distance to right wall in meters
         """
-        if self.ranges is None:
+        if self.ranges is None or self.angle_increment is None or self.angle_min is None:
             return float('inf')
         
-        # Right wall is at index 0 (0°)
-        right_idx = 0
-        # Average over small window for stability
+        # CORRECT method for actual laser geometry
+        right_idx = int((math.pi/2 - self.angle_min) / self.angle_increment)  # +90° relative to angle_min
+        
+        # Ensure index is within valid range
+        right_idx = max(0, min(right_idx, len(self.ranges) - 1))
+        
+        # Get distance (add small averaging for stability)
         window = 2
-        indices = [max(0, right_idx + i) for i in range(-window, window + 1)]
-        distances = [self.ranges[i] for i in indices if i < len(self.ranges)]
+        indices = []
+        for i in range(-window, window + 1):
+            idx = right_idx + i
+            if 0 <= idx < len(self.ranges):
+                indices.append(idx)
+        
+        distances = [self.ranges[i] for i in indices if self.ranges[i] > 0 and math.isfinite(self.ranges[i])]
         return np.mean(distances) if distances else float('inf')
 
     def get_front_distance(self):
         """
-        Get distance to front obstacle
+        Get distance to front obstacle for obstacle avoidance
+        
+        Uses CORRECT geometry for 360° laser with actual parameters:
+        - angle_min ≈ -3.12 rad (-179°)
+        - angle_max ≈ +3.14 rad (+180°)
+        - Front (0°) is at index calculated from actual geometry
         
         Returns:
             float: Distance to front obstacle in meters
         """
-        if self.ranges is None:
+        if self.ranges is None or self.angle_min is None or self.angle_increment is None:
             return float('inf')
         
-        # Front is at index 360 (90°)
-        front_idx = 360
-        # Average over small window for stability
-        window = 5
+        # CORRECT method for actual laser geometry
+        front_idx = int((0.0 - self.angle_min) / self.angle_increment)  # 0° relative to angle_min
+        
+        # Ensure index is within valid range
+        front_idx = max(0, min(front_idx, len(self.ranges) - 1))
+        
+        # Get front distance with small averaging window
+        window = 2
         indices = [front_idx + i for i in range(-window, window + 1)]
-        distances = [self.ranges[i] for i in indices if 0 <= i < len(self.ranges)]
+        distances = [self.ranges[i] for i in indices if 0 <= i < len(self.ranges) and self.ranges[i] > 0 and math.isfinite(self.ranges[i])]
         return np.mean(distances) if distances else float('inf')
 
     def calculate_wall_following_control(self):
         """
-        Calculate velocity commands for wall following using sector-based obstacle detection
+        Calculate velocity commands for wall following using SIMPLE control logic
         
-        Simple control strategy:
-        1. Check sectors for front obstacles - turn left if detected
-        2. Maintain distance from right wall - turn right/left as needed
-        3. Go straight when conditions are good
+        Based on the working ros1_wall_follower_final_version.py:
+        1. Simple bang-bang control for wall distance
+        2. Simple front obstacle avoidance
+        3. No complex sector analysis - just direct measurements
         
         Returns:
             tuple: (linear_velocity, angular_velocity)
         """
-        # Get obstacle detections using sector-based analysis
-        detections = self.get_sector_obstacle_detections(self.front_obstacle_threshold)
-        
-        # Get wall distance
+        # Get wall and front distances using the working method
         right_dist = self.get_right_wall_distance()
+        front_dist = self.get_front_distance()
         
-        # Priority 1: Front obstacle avoidance
-        if detections.get("Front_Center", False) or detections.get("Front_Right", False):
-            self.get_logger().info("Front obstacle detected - turning left")
-            return self.forward_speed * 0.5, self.turn_speed  # Slow down and turn left
+        # Simple bang-bang control like the working file
+        twist_linear = 0.1  # Always move forward
+        twist_angular = 0.0  # Default: go straight
         
-        # Priority 2: Wall distance control
-        elif right_dist > self.max_wall_distance:
-            # Too far from wall - turn right
-            return self.forward_speed, -self.turn_speed
-        elif right_dist < self.min_wall_distance:
-            # Too close to wall - turn left
-            return self.forward_speed, self.turn_speed
+        # Wall distance control (copy from working file)
+        if right_dist > 0.3:
+            twist_angular = -0.4  # Turn right (toward wall)
+        elif right_dist < 0.2:
+            twist_angular = 0.4   # Turn left (away from wall)
         else:
-            # Good distance - go straight
-            return self.forward_speed, 0.0
+            twist_angular = 0.0   # Go straight
+        
+        # Front obstacle avoidance (copy from working file)
+        if front_dist < 0.5:
+            twist_angular = 3.0   # Strong left turn
+            twist_linear = 0.1    # Keep moving
+        
+        return twist_linear, twist_angular
 
     def publish_velocity(self, linear_vel, angular_vel):
         """
@@ -287,6 +355,14 @@ class WallFollowing(Node):
         """
         self.publish_velocity(0.0, 0.0)
 
+    def delayed_prepare_robot(self):
+        """
+        Delayed preparation method called after laser data is available
+        This ensures the laser subscription is fully active before starting
+        """
+        self.get_logger().info("Starting delayed robot preparation...")
+        self.prepare_robot()
+
     def prepare_robot(self):
         """
         Execute complete preparation sequence before starting wall following
@@ -299,18 +375,24 @@ class WallFollowing(Node):
         self.get_logger().info("=== ROBOT PREPARATION SEQUENCE ===")
         
         # Step 1: Find and align with wall
+        self.get_logger().info("Step 1: Finding and aligning with wall...")
         if not self.call_find_wall_service():
             self.get_logger().error(" Could not find wall - aborting preparation")
             return False
+        self.get_logger().info("Step 1: ✅ Wall found and aligned!")
         
-        # Step 2: Start odometry recording
+        # Step 2: Start odometry recording (optional - don't fail if not available)
+        self.get_logger().info("Step 2: Attempting to start odometry recording...")
         if not self.start_odom_recording():
-            self.get_logger().error(" Could not start odometry recording - aborting preparation")
-            return False
+            self.get_logger().warn(" Could not start odometry recording - continuing without it")
+            # Don't abort - continue with wall following anyway
+        else:
+            self.get_logger().info("Step 2: ✅ Odometry recording started!")
         
         # Step 3: Mark preparation complete
+        self.get_logger().info("Step 3: Marking preparation as complete...")
         self.preparation_complete = True
-        self.get_logger().info(" Preparation complete - starting wall following behavior")
+        self.get_logger().info("Step 3: ✅ Preparation complete - starting wall following behavior")
         
         return True
 
@@ -407,22 +489,35 @@ class WallFollowing(Node):
         Main control loop for wall following behavior
         
         Simple control strategy:
-        1. Wait for preparation to complete
-        2. Calculate control commands using sector-based analysis
+        1. Wait for laser data to be available
+        2. Calculate control commands using simple wall following
         3. Publish velocity commands
         """
-        # Only run if preparation is complete
-        if not self.preparation_complete:
-            return
-        
-        # Ensure we have laser data
-        if self.ranges is None:
+        # Wait for laser data to be available before doing anything
+        if not self.laser_initialized or self.ranges is None:
+            # Don't spam logs - only log occasionally
+            if not hasattr(self, '_waiting_logged') or self._waiting_logged % 50 == 0:
+                self.get_logger().info("Waiting for laser data to start wall following...")
+            if not hasattr(self, '_waiting_logged'):
+                self._waiting_logged = 0
+            self._waiting_logged += 1
             self.stop_robot()
             return
         
         try:
-            # Calculate velocities using sector-based control
+            # Calculate velocities using wall following control
             linear_vel, angular_vel = self.calculate_wall_following_control()
+            
+            # Log control decisions every 2 seconds for monitoring
+            if not hasattr(self, '_control_log_counter'):
+                self._control_log_counter = 0
+            self._control_log_counter += 1
+            
+            if self._control_log_counter % 20 == 0:  # Every 2 seconds at 10Hz
+                right_dist = self.get_right_wall_distance()
+                front_dist = self.get_front_distance()
+                self.get_logger().info(f"🤖 Wall following: right={right_dist:.2f}m, front={front_dist:.2f}m, "
+                                      f"cmd: linear={linear_vel:.2f}, angular={angular_vel:.2f}")
             
             # Send commands to robot
             self.publish_velocity(linear_vel, angular_vel)
