@@ -65,13 +65,31 @@ class WallFollower:
             rospy.loginfo("Here, ray[0] corresponds to angle_min "
                           f"({math.degrees(msg.angle_min):.1f}°). "
                           "Front is assumed at mid index.")
+            rospy.loginfo("🚀 LASER CALLBACK WORKING! Starting wall following...")
+
+        # Add periodic logging to see if callback is still working
+        if not hasattr(self, "_callback_count"):
+            self._callback_count = 0
+        self._callback_count += 1
+        
+        if self._callback_count % 50 == 0:  # Every ~5 seconds at 10Hz
+            rospy.loginfo(f"📡 Laser callback active (message #{self._callback_count})")
 
         self.follow_wall()
 
 
     def follow_wall(self):
         if not self.scan:
+            rospy.logwarn("⚠️ follow_wall called but no scan data available!")
             return
+
+        # Add debug logging to see if this method is running
+        if not hasattr(self, "_follow_count"):
+            self._follow_count = 0
+        self._follow_count += 1
+        
+        if self._follow_count % 50 == 0:  # Every ~5 seconds
+            rospy.loginfo(f"🤖 Wall following active (iteration #{self._follow_count})")
 
         mid = len(self.scan.ranges) // 2
         right_idx = mid - int((90 * 3.14159/180) / self.scan.angle_increment)
@@ -90,6 +108,11 @@ class WallFollower:
         if front < 0.5:
             twist.angular.z = 3.0
             twist.linear.x = 0.1
+
+        # Add debug logging for first few commands
+        if self._follow_count <= 5:
+            rospy.loginfo(f"🎮 Sending cmd: linear={twist.linear.x:.2f}, angular={twist.angular.z:.2f} "
+                         f"(right_dist={distance:.2f}m, front_dist={front:.2f}m)")
 
         self.pub.publish(twist)
 
