@@ -167,3 +167,69 @@ rosbag play -l laser.bag
 
 
 
+---
+
+
+/src
+
+ros1 
+
+rosbag record
+rosbag info Name.bag
+rosbag Play Name,bag
+rostopic echo -b Name.bag -p /scan > data.csv
+
+
+
+
+
+there areo fcourse many ways in refars data analyses, but this is the most easy and direct way:
+
+ros2
+
+ros2 bag record /scan /odom /cmd_vel
+ros2 bag info Name
+ros2 bag Play Name<
+ros2 Topic echo /scan --once  --csv > scan.csv
+
+Linux CLI:
+tail -n 1 odom.csv (last row)
+cut -d',' -f1,2 odom.csv cut -d',' -f100 scan.csv (column 1 and 2)
+
+---
+angle_min: -3.1241390705108643  # ≈ -179°
+angle_max: 3.1415927410125732   # ≈ +180° 
+angle_increment: 0.008714509196579456  # ≈ 0.5°
+
+
+
+
+
+(这个可以讲十分钟)
+if you check the scan message Header you can see the laser geometry parameters are completely different, the tultle bt robot has a config from minus 180 to plus 180 , and the gazebo Simulator robot is from 0 to 360 Degree, 
+
+
+angle_min: 0.0
+angle_max: 6.28000020980835
+angle_increment: 0.008734352886676788
+range_min: 0.11999999731779099
+range_max: 3.5
+
+
+angle_min: -3.1241390705108643
+angle_max: 3.1415927410125732
+angle_increment: 0.008714509196579456
+range_min: 0.15000000596046448
+range_max: 12.0
+
+
+
+
+ros2已经可以交了，但是在转圈的时候，总是转去墙的右边而不是正对墙。，可能右边laser beam更有优先权，在交接任务的时候有个很奇怪的突然转身的动作
+
+ros1也有同样的问题，laser指错了，总是转啊转却找不到最近的墙
+
+
+
+
+
