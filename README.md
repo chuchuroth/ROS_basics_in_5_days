@@ -115,6 +115,9 @@ rostopic echo /scan   --field ranges[100]
 
 
 ros2 topic info /laser_scan -v (To get information about the QoS setting of a specific topic)
+# The QoS settings of the topic Publisher and the Subscriber node need to be compatible.
+# If they are not compatible, the communication between them won't work.
+# Due to the fact that it is the Publisher that sets the QoS of the topic, the subscribers are depend on that configuration.
 ```
 
 ---
@@ -183,7 +186,7 @@ rostopic echo -b Name.bag -p /scan > data.csv
 
 
 
-there areo fcourse many ways in refars data analyses, but this is the most easy and direct way:
+there are more ways to data analysis but this ways is ros specific
 
 ros2
 
