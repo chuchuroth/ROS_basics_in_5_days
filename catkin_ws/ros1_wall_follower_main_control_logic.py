@@ -18,10 +18,10 @@ class WallFollower:
             rospy.loginfo("Calling find_wall service...")
             resp = find_wall_client()
             if resp.wallfound:
-                rospy.loginfo("Wall found successfully ✅")
+                rospy.loginfo("Wall found successfully ")
                 wall_ok = True
             else:
-                rospy.logwarn("find_wall responded but wall not found ❌")
+                rospy.logwarn("find_wall responded but wall not found ")
         except (rospy.ROSException, rospy.ServiceException) as e:
             rospy.logwarn(f"find_wall service call failed: {e}")
 
@@ -32,17 +32,17 @@ class WallFollower:
             client = actionlib.SimpleActionClient('record_odom', OdomRecordAction)
             if client.wait_for_server(timeout=rospy.Duration(5.0)):
                 client.send_goal(OdomRecordGoal())
-                rospy.loginfo("Odom recording started ✅")
+                rospy.loginfo("Odom recording started ")
                 odom_ok = True
             else:
-                rospy.logwarn("record_odom action server not available ❌")
+                rospy.logwarn("record_odom action server not available ")
         except Exception as e:
             rospy.logwarn(f"Failed to start odom recording: {e}")
 
         if wall_ok and odom_ok:
             rospy.loginfo("Preparation complete. Starting wall-following.")
         else:
-            rospy.logwarn("One or more preparations failed ❌. Starting wall-following anyway.")
+            rospy.logwarn("One or more preparations failed . Starting wall-following anyway.")
 
         # --- Setup scan subscriber and cmd_vel publisher ---
         self.scan = None
@@ -65,7 +65,7 @@ class WallFollower:
             rospy.loginfo("Here, ray[0] corresponds to angle_min "
                           f"({math.degrees(msg.angle_min):.1f}°). "
                           "Front is assumed at mid index.")
-            rospy.loginfo("🚀 LASER CALLBACK WORKING! Starting wall following...")
+            rospy.loginfo(" LASER CALLBACK WORKING! Starting wall following...")
 
         # Add periodic logging to see if callback is still working
         if not hasattr(self, "_callback_count"):
@@ -73,14 +73,14 @@ class WallFollower:
         self._callback_count += 1
         
         if self._callback_count % 50 == 0:  # Every ~5 seconds at 10Hz
-            rospy.loginfo(f"📡 Laser callback active (message #{self._callback_count})")
+            rospy.loginfo(f" Laser callback active (message #{self._callback_count})")
 
         self.follow_wall()
 
 
     def follow_wall(self):
         if not self.scan:
-            rospy.logwarn("⚠️ follow_wall called but no scan data available!")
+            rospy.logwarn(" follow_wall called but no scan data available!")
             return
 
         # Add debug logging to see if this method is running
@@ -89,7 +89,7 @@ class WallFollower:
         self._follow_count += 1
         
         if self._follow_count % 50 == 0:  # Every ~5 seconds
-            rospy.loginfo(f"🤖 Wall following active (iteration #{self._follow_count})")
+            rospy.loginfo(f" Wall following active (iteration #{self._follow_count})")
 
         mid = len(self.scan.ranges) // 2
         right_idx = mid - int((90 * 3.14159/180) / self.scan.angle_increment)
@@ -111,7 +111,7 @@ class WallFollower:
 
         # Add debug logging for first few commands
         if self._follow_count <= 5:
-            rospy.loginfo(f"🎮 Sending cmd: linear={twist.linear.x:.2f}, angular={twist.angular.z:.2f} "
+            rospy.loginfo(f" Sending cmd: linear={twist.linear.x:.2f}, angular={twist.angular.z:.2f} "
                          f"(right_dist={distance:.2f}m, front_dist={front:.2f}m)")
 
         self.pub.publish(twist)
