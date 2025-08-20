@@ -124,10 +124,10 @@ class WallFollowing(Node):
         # CALL FIND_WALL IMMEDIATELY (like ROS1 version) - don't wait for laser data!
         self.get_logger().info("=== CALLING FIND_WALL SERVICE IMMEDIATELY ===")
         if self.call_find_wall_service():
-            self.get_logger().info("✅ Find wall service completed successfully")
+            self.get_logger().info(" Find wall service completed successfully")
             self.wall_found = True
         else:
-            self.get_logger().warn("❌ Find wall service failed - continuing anyway")
+            self.get_logger().warn(" Find wall service failed - continuing anyway")
         
         # Mark preparation complete so control loop can start
         self.preparation_complete = True
@@ -185,7 +185,7 @@ class WallFollowing(Node):
             # Mark laser as initialized - preparation already complete
             if not self.laser_initialized:
                 self.laser_initialized = True
-                self.get_logger().info("✅ Laser data received! Wall following can now start...")
+                self.get_logger().info(" Laser data received! Wall following can now start...")
 
     def get_sector_obstacle_detections(self, obstacle_threshold=0.8):
         """
@@ -213,11 +213,11 @@ class WallFollowing(Node):
         # Define key sectors for wall following (using actual angles)
         # Narrowed Front_Center for less sensitive obstacle detection
         sectors = {
-            "Right": (angle_to_index(70), angle_to_index(110)),      # Right side wall (90° ± 20°)
-            "Front_Right": (angle_to_index(20), angle_to_index(70)), # Front-right area
-            "Front_Center": (angle_to_index(-10), angle_to_index(10)), # Direct front (0° ± 10°) - NARROWED
-            "Front_Left": (angle_to_index(-70), angle_to_index(-20)), # Front-left area  
-            "Left": (angle_to_index(-110), angle_to_index(-70)),     # Left side (-90° ± 20°)
+            "Right": (angle_to_index(0), angle_to_index(40)),      # Right side wall (90° ± 20°)
+            "Front_Right": (angle_to_index(-50), angle_to_index(0)), # Front-right area
+            "Front_Center": (angle_to_index(-90), angle_to_index(-50)), # Direct front (0° ± 10°) - NARROWED
+            "Front_Left": (angle_to_index(-180), angle_to_index(-140)), # Front-left area  
+            "Left": (angle_to_index(90), angle_to_index(-230)),     # Left side (-90° ± 20°)
         }
         
         detections = {}
@@ -323,7 +323,7 @@ class WallFollowing(Node):
         
         # Wall distance control (copy from working file)
         if right_dist > 0.3:
-            twist_angular = -0.4  # Turn right (toward wall)
+            twist_angular = -0.2  # Turn right (toward wall)
         elif right_dist < 0.2:
             twist_angular = 0.4   # Turn left (away from wall)
         else:
@@ -379,7 +379,7 @@ class WallFollowing(Node):
         if not self.call_find_wall_service():
             self.get_logger().error(" Could not find wall - aborting preparation")
             return False
-        self.get_logger().info("Step 1: ✅ Wall found and aligned!")
+        self.get_logger().info("Step 1: Wall found and aligned!")
         
         # Step 2: Start odometry recording (optional - don't fail if not available)
         self.get_logger().info("Step 2: Attempting to start odometry recording...")
@@ -387,12 +387,12 @@ class WallFollowing(Node):
             self.get_logger().warn(" Could not start odometry recording - continuing without it")
             # Don't abort - continue with wall following anyway
         else:
-            self.get_logger().info("Step 2: ✅ Odometry recording started!")
+            self.get_logger().info("Step 2: Odometry recording started!")
         
         # Step 3: Mark preparation complete
         self.get_logger().info("Step 3: Marking preparation as complete...")
         self.preparation_complete = True
-        self.get_logger().info("Step 3: ✅ Preparation complete - starting wall following behavior")
+        self.get_logger().info("Step 3: Preparation complete - starting wall following behavior")
         
         return True
 
@@ -445,44 +445,88 @@ class WallFollowing(Node):
 
     def start_odom_recording(self):
         """
-        Start the odometry recording action to track robot path during wall following
-        
-        This action will continuously record the robot's position and orientation
-        throughout the wall following behavior for later analysis.
-        
-        Returns:
-            bool: True if action started successfully, False otherwise
+        Start the odometry recording action to track robot path during wall following.
+        Prints feedback (distance) as received, and prints the result (path and total distance) when done.
         """
         self.get_logger().info(" Starting odometry recording...")
-        
-        # Wait for action server to become available
         self.get_logger().info("Waiting for /record_odom action server...")
         if not self.odom_action_client.wait_for_server(timeout_sec=10.0):
             self.get_logger().error("/record_odom action server not available after 10 seconds!")
             return False
-        
-        # Create and send action goal
         goal_msg = OdomRecord.Goal()
         self.get_logger().info("Sending odometry recording goal...")
-        
-        try:
-            # Send goal with timeout
-            send_goal_future = self.odom_action_client.send_goal_async(goal_msg)
-            rclpy.spin_until_future_complete(self, send_goal_future, timeout_sec=10.0)
-            
-            # Check goal acceptance
-            goal_handle = send_goal_future.result()
-            if goal_handle is not None and goal_handle.accepted:
-                self.get_logger().info(" Odometry recording started successfully!")
-                self.odom_recording = True
-                return True
-            else:
-                self.get_logger().error(" Odometry recording goal rejected")
-                return False
-                
-        except Exception as e:
-            self.get_logger().error(f" Failed to start odometry recording: {str(e)}")
+        # Send goal and register feedback/result callbacks
+        future = self.odom_action_client.send_goal_async(
+            goal_msg,
+            feedback_callback=self.odom_feedback_callback
+        )
+        rclpy.spin_until_future_complete(self, future, timeout_sec=10.0)
+        goal_handle = future.result()
+        if goal_handle is not None and goal_handle.accepted:
+            self.get_logger().info(" Odometry recording started successfully!")
+            self.odom_recording = True
+            # Register result callback
+            get_result_future = goal_handle.get_result_async()
+            get_result_future.add_done_callback(self.odom_result_callback)
+            return True
+        else:
+            self.get_logger().error(" Odometry recording goal rejected")
             return False
+
+    def odom_feedback_callback(self, feedback_msg):
+        # Throttle feedback printing to every 10 seconds, but print immediately if near start
+        current_total = feedback_msg.feedback.current_total
+        now = self.get_clock().now().nanoseconds / 1e9
+        # Use instance variables to track last print and near-start flag
+        if not hasattr(self, '_last_odom_feedback_time'):
+            self._last_odom_feedback_time = 0.0
+        if not hasattr(self, '_near_start_printed'):
+            self._near_start_printed = False
+
+        # Try to get last odom point and first odom point from result if available
+        near_start = False
+        try:
+            # If odometry points are available in feedback, check distance to start
+            if hasattr(feedback_msg.feedback, 'list_of_odoms') and feedback_msg.feedback.list_of_odoms:
+                odoms = feedback_msg.feedback.list_of_odoms
+                first = odoms[0]
+                last = odoms[-1]
+                dx = last.x - first.x
+                dy = last.y - first.y
+                distance_to_start = math.sqrt(dx*dx + dy*dy)
+                if distance_to_start < 0.2:
+                    near_start = True
+        except Exception:
+            pass
+
+        # Print feedback if 10 seconds have passed or if near start and not yet printed
+        if (now - self._last_odom_feedback_time > 10.0) or (near_start and not self._near_start_printed):
+            msg = f"[Odom Feedback] Current total distance: {current_total:.3f} m"
+            if near_start and not self._near_start_printed:
+                msg = "\n====================\n!!! ROBOT NEAR STARTING POSITION !!!\n" + msg + "\n===================="
+                self._near_start_printed = True
+            self.get_logger().info(msg)
+            print(msg, flush=True)
+            self._last_odom_feedback_time = now
+
+    def odom_result_callback(self, future):
+        # Print result (list of odometry points and total distance)
+        result = future.result().result
+        odom_points = result.list_of_odoms
+        msg = f"[Odom Result] Path points recorded: {len(odom_points)}"
+        self.get_logger().info(msg)
+        print(msg, flush=True)
+        if odom_points:
+            for i, pt in enumerate(odom_points):
+                pt_msg = f"  Point {i+1}: x={pt.x:.3f}, y={pt.y:.3f}"
+                self.get_logger().info(pt_msg)
+                print(pt_msg, flush=True)
+        # Try to print total distance if available (if server adds it to result)
+        if hasattr(result, 'total_distance'):
+            total_msg = f"[Odom Result] Total distance: {result.total_distance:.3f} m"
+            self.get_logger().info(total_msg)
+            print(total_msg, flush=True)
+
 
     def control_loop(self):
         """
@@ -516,7 +560,7 @@ class WallFollowing(Node):
             if self._control_log_counter % 20 == 0:  # Every 2 seconds at 10Hz
                 right_dist = self.get_right_wall_distance()
                 front_dist = self.get_front_distance()
-                self.get_logger().info(f"🤖 Wall following: right={right_dist:.2f}m, front={front_dist:.2f}m, "
+                self.get_logger().info(f" Wall following: right={right_dist:.2f}m, front={front_dist:.2f}m, "
                                       f"cmd: linear={linear_vel:.2f}, angular={angular_vel:.2f}")
             
             # Send commands to robot
