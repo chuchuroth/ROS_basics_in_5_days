@@ -183,7 +183,12 @@ Created comprehensive launch files with parameter configuration
 Supports both simulation and real-robot scenarios
 
 
+---
 
+
+The QoS settings of the topic Publisher and the Subscriber node need to be compatible.
+If they are not compatible, the communication between them won't work.
+Due to the fact that it is the Publisher that sets the QoS of the topic, the subscribers are depend on that configuration.¶
 
 
 
