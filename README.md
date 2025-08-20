@@ -107,10 +107,6 @@ ros2 node info /mars_rover_1
 ```
 
 ros2 topic echo /cmd_vel
-ros2 topic echo /laser_scan --once  (the last one)
-ros2 topic echo /laser_scan --field ranges
-rostopic echo /scan   --field ranges[100]
-# the LaserScan interface has an element named ranges, it contains the distance detection data, echo that field using the --field argument
 # Each value in the ranges array represents the sensor's reading in a specific direction. Thus, each direction is represented by a position in this array.
 
 
