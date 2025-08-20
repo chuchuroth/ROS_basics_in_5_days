@@ -238,10 +238,10 @@ class WallFinder(Node):
         """
         if self.ranges is None or self.angle_min is None or self.angle_increment is None:
             return {
-                'front': 358,  # Approximate for angle_min=-3.12
-                'right': 179,
-                'back': 0,
-                'left': 537
+                'front': 360,  # Approximate for angle_min=-3.12
+                'right': 0,
+          #      'back': 540,
+                'left': 719
             }
         
         # CORRECT method for actual laser geometry
@@ -490,7 +490,7 @@ class WallFinder(Node):
                     self.get_logger().info(f"   Total callbacks processed: {self._scan_callback_count}")
         
         # Ensure we have fresh laser data
-        self.get_logger().info("📡 Ensuring fresh 360° laser data...")
+        self.get_logger().info(" Ensuring fresh 360° laser data...")
         for _ in range(5):  # Get more fresh samples
             rclpy.spin_once(self, timeout_sec=0.2)
             time.sleep(0.1)
@@ -650,7 +650,7 @@ class WallFinder(Node):
         if self.ranges is None or self.angle_min is None or self.angle_increment is None:
             return None
         
-        self.get_logger().info("🔍 CONDUCTING SECTOR-BASED 360° LASER ANALYSIS...")
+        self.get_logger().info(" CONDUCTING SECTOR-BASED 360° LASER ANALYSIS...")
         self.get_logger().info(f"Laser geometry: angle_min={self.angle_min:.3f}, angle_increment={self.angle_increment:.6f}")
         
         # Log calculated front index for verification
@@ -907,24 +907,20 @@ class WallFinder(Node):
         
         for sector_name, min_dist in sorted_sectors:
             if min_dist == float('inf'):
-                status_symbol = "❌"
                 dist_str = "No valid data"
             elif min_dist < 0.5:
-                status_symbol = "🔴"  # Very close
                 dist_str = f"{min_dist:.3f}m"
             elif min_dist < 1.0:
-                status_symbol = "🟡"  # Moderate distance
                 dist_str = f"{min_dist:.3f}m"
             else:
-                status_symbol = "🟢"  # Far
                 dist_str = f"{min_dist:.3f}m"
             
             stats = analysis['sector_stats'].get(sector_name)
             if stats and stats is not None:
                 angle_range = f"({stats['coverage_angle_start']:.1f}°-{stats['coverage_angle_end']:.1f}°)"
-                self.get_logger().info(f"   {sector_name:>12} {status_symbol}: {dist_str:>10} {angle_range}")
+                self.get_logger().info(f"   {sector_name:>12}: {dist_str:>10} {angle_range}")
             else:
-                self.get_logger().info(f"   {sector_name:>12} {status_symbol}: {dist_str:>10} (Invalid sector)")
+                self.get_logger().info(f"   {sector_name:>12} : {dist_str:>10} (Invalid sector)")
         
         self.get_logger().info("")
         
@@ -940,10 +936,10 @@ class WallFinder(Node):
         self.get_logger().info(f"   Action needed: {analysis['rotation_needed']}")
         
         if analysis['target_achieved']:
-            self.get_logger().info("    ✅ ROBOT IS ALREADY ALIGNED WITH NEAREST WALL!")
+            self.get_logger().info("     ROBOT IS ALREADY ALIGNED WITH NEAREST WALL!")
         else:
-            direction_arrow = "↶" if analysis['rotation_direction'] > 0 else "↷"
-            self.get_logger().info(f"    🔄 WILL ROTATE {direction_arrow} TO ALIGN WITH TARGET")
+            direction_arrow = "counterclockwise" if analysis['rotation_direction'] > 0 else "clockwise"
+            self.get_logger().info(f"    WILL ROTATE {direction_arrow} TO ALIGN WITH TARGET")
         
         self.get_logger().info("=" * 70)
 
@@ -984,10 +980,10 @@ class WallFinder(Node):
         self.get_logger().info(f" DIRECTIONAL ANALYSIS (180° Forward):")
         for direction, data in analysis['directional_analysis'].items():
             if not data.get('available', True):
-                self.get_logger().info(f"   {direction.upper():>5} ❌: {data.get('note', 'Not available')}")
+                self.get_logger().info(f"   {direction.upper():>5} corrupted data : {data.get('note', 'Not available')}")
                 continue
                 
-            validity_str = "✅" if data['is_valid'] else "❌"
+            validity_str = "ok" if data['is_valid'] else "corrupted data"
             self.get_logger().info(f"   {direction.upper():>5} {validity_str}: Index {data['index']} → "
                                   f"{data['distance']:.3f}m (avg: {data['averaged_distance']:.3f}m) "
                                   f"at {data['angle']:.1f}°")
