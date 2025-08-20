@@ -476,7 +476,7 @@ def handle_find_wall(req):
     rospy.loginfo("Wall found and aligned using sector-based analysis.")
     return FindWallResponse(wallfound=True)
 
-# Main execution - simple ROS1 pattern like your example
+# Main execution 
 if __name__ == '__main__':
     try:
         # Initialize ROS node
@@ -505,3 +505,4 @@ if __name__ == '__main__':
     except rospy.ROSInterruptException:
         rospy.loginfo("Shutting down find_wall_server")
         pass
+
