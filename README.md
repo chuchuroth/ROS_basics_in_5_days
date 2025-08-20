@@ -197,30 +197,11 @@ tail -n 1 odom.csv (last row)
 cut -d',' -f1,2 odom.csv cut -d',' -f100 scan.csv (column 1 and 2)
 
 ---
-angle_min: -3.1241390705108643  # ≈ -179°
-angle_max: 3.1415927410125732   # ≈ +180° 
-angle_increment: 0.008714509196579456  # ≈ 0.5°
 
 
 
 
 
-(这个可以讲十分钟)
-if you check the scan message Header you can see the laser geometry parameters are completely different, the tultle bt robot has a config from minus 180 to plus 180 , and the gazebo Simulator robot is from 0 to 360 Degree, 
-
-
-angle_min: 0.0
-angle_max: 6.28000020980835
-angle_increment: 0.008734352886676788
-range_min: 0.11999999731779099
-range_max: 3.5
-
-
-angle_min: -3.1241390705108643
-angle_max: 3.1415927410125732
-angle_increment: 0.008714509196579456
-range_min: 0.15000000596046448
-range_max: 12.0
 
 
 
