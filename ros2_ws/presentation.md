@@ -1,3 +1,33 @@
+
+
+If your LIDAR is 180° forward-facing (indices 0-719):
+Right: 0
+Front: 360
+Left: 719
+If your LIDAR is 360° (indices 0-720):
+Right: 0
+Front: 180
+Left: 360
+Back: 540
+
+---
+
+this works perfect:
+    test_front = angle_to_index(180)    # Should be ~358 for angle_min=-3.12
+    test_right = angle_to_index(0)   # Should be ~179 for angle_min=-3.12  
+    test_back = angle_to_index(540)   # Should be ~0 for angle_min=-3.12
+    test_left = angle_to_index(360)   # Should be ~537 for angle_min=-3.12
+
+        "Right": (angle_to_index(0), angle_to_index(40)),           # Right side wall (90° ± 20°)
+        "Front_Right": (angle_to_index(-50), angle_to_index(0)),      # Front-right area
+        "Front_Center": (angle_to_index(-90), angle_to_index(-50)),    # Direct front (0° ± 20°)
+        "Front_Left": (angle_to_index(-140), angle_to_index(-90)),     # Front-left area  
+        "Left": (angle_to_index(-180), angle_to_index(-140)),          # Left side (-90° ± 20°)
+        "Rear": (angle_to_index(90), angle_to_index(-230)),          # Rear area (±180° ± 20°)
+
+
+
+---
 hello today i am going to share a ros project demo from the course ROS2 Basics in 5 days, because I already did the demo for the course ROS Basics in 5 days. I'll skip the Basic ros concepts and the Debugging Tools, and talk mainly About two topics, the laser scan data-analysis Methods, and the Control logic algorithm.
 
 this Project is to design a ros package to control the turtlebot robot to do a wall following movement, 
