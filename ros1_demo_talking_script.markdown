@@ -3,7 +3,67 @@
 Today, I am going to present a ROS program demo, which is an assignment from the course *ROS Basics in 5 Days* from Construct. I’ll explain some very basic ROS operations and concepts like ROS nodes, topics, services, and actions—the communication mechanisms defined in ROS. Essentially, I’ll cover what I’ve learned in this course. I’ll also discuss tools like `rqt`, `rosbags`, and the visualization tool `rviz`.
 
 ## Launching the Program
-First, let me launch the program. This program controls a TurtleBot robot to perform a wall-following movement. Here’s the process:
+First, let me launch the program. 
+
+# ROS1 Wall Finder Service Node - Production-Ready Implementation
+
+## Overview
+This ROS1 node provides a robust wall-finding service that enables a robot to locate, approach, and align with the nearest wall for subsequent wall-following behavior. The node implements advanced sector-based laser analysis for precise wall detection and positioning.
+
+## Purpose
+- Locate the nearest wall in the robot's environment using 360° laser data
+- Rotate the robot to face the nearest wall (Step 1: Alignment)
+- Approach the wall to an optimal distance (Step 2: Positioning) 
+- Align the robot so the wall is on the right side (Step 3: Preparation)
+- Return success/failure status to calling nodes
+
+
+
+## Key Technical Features
+- Sector-based 360° laser analysis for robust obstacle detection
+- Laser-guided control loops with continuous feedback
+- Correct geometry calculations for any laser configuration
+- Wrap-around handling for rear sector analysis
+
+---
+# ROS1 Wall Follower Client Node - Comprehensive Production Implementation
+
+
+
+## Overview and Purpose
+This file implements the ROS1 wall following client node that coordinates multiple services to achieve autonomous wall following behavior. It acts as the main controller that:
+1. Calls the find_wall service to locate and approach the nearest wall
+2. Starts odom recording action for path tracking  
+3. Executes continuous wall following using laser-guided control
+4. Maintains optimal distance from wall on robot's RIGHT side
+
+## Architectural Design Decisions
+This implementation follows a service client + action client + continuous control architecture that provides several key advantages:
+The code is organized into logical sections that mirror the robot's operational workflow:
+1. Service/Action Setup (preparation phase)
+2. Sensor Callback (perception phase)
+3. Control Logic (action phase)
+4. Error Handling (safety phase)
+
+
+
+4. PRODUCTION-READY ERROR HANDLING:
+   - Graceful degradation when services unavailable
+   - Comprehensive logging for operational monitoring
+   - Robust exception handling for service timeouts
+
+
+- Implements proportional control for distance maintenance
+- Includes collision avoidance for front obstacles
+
+---
+
+
+
+
+
+
+This program controls a TurtleBot robot to perform a wall-following movement. Here’s the process:
 - The robot publishes to `/scan` (laser) and `/odom` (position) topics.
 - The wall follower calls the `find_wall` service to get into position.
 - Before starting to move along the wall, it sends a goal to the odometry action server to start recording immediately.
@@ -85,60 +145,6 @@ Some basic Linux commands for analyzing the CSV:
 - `cut -d',' -f100 scan.csv` (specific column)
 
 ---
-
-
-# ROS1 Wall Finder Service Node - Production-Ready Implementation
-
-## Overview
-This ROS1 node provides a robust wall-finding service that enables a robot to locate, approach, and align with the nearest wall for subsequent wall-following behavior. The node implements advanced sector-based laser analysis for precise wall detection and positioning.
-
-## Purpose
-- Locate the nearest wall in the robot's environment using 360° laser data
-- Rotate the robot to face the nearest wall (Step 1: Alignment)
-- Approach the wall to an optimal distance (Step 2: Positioning) 
-- Align the robot so the wall is on the right side (Step 3: Preparation)
-- Return success/failure status to calling nodes
-
-
-
-## Key Technical Features
-- Sector-based 360° laser analysis for robust obstacle detection
-- Laser-guided control loops with continuous feedback
-- Correct geometry calculations for any laser configuration
-- Wrap-around handling for rear sector analysis
-
----
-# ROS1 Wall Follower Client Node - Comprehensive Production Implementation
-
-
-
-## Overview and Purpose
-This file implements the ROS1 wall following client node that coordinates multiple services to achieve autonomous wall following behavior. It acts as the main controller that:
-1. Calls the find_wall service to locate and approach the nearest wall
-2. Starts odom recording action for path tracking  
-3. Executes continuous wall following using laser-guided control
-4. Maintains optimal distance from wall on robot's RIGHT side
-
-## Architectural Design Decisions
-This implementation follows a service client + action client + continuous control architecture that provides several key advantages:
-The code is organized into logical sections that mirror the robot's operational workflow:
-1. Service/Action Setup (preparation phase)
-2. Sensor Callback (perception phase)
-3. Control Logic (action phase)
-4. Error Handling (safety phase)
-
-
-
-4. PRODUCTION-READY ERROR HANDLING:
-   - Graceful degradation when services unavailable
-   - Comprehensive logging for operational monitoring
-   - Robust exception handling for service timeouts
-
-
-- Implements proportional control for distance maintenance
-- Includes collision avoidance for front obstacles
-
-
 
 
 
