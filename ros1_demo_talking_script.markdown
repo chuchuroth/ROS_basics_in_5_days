@@ -66,7 +66,8 @@ angle_min: -3.1241390705108643  # ≈ -179°
 angle_max: 3.1415927410125732   # ≈ +180°
 angle_increment: 0.008714509196579456  # ≈ 0.5°
 ```
- This method uses the sector-based approach adapted for 360° laser coverage, dividing the full laser scan into sectors for obstacle detection and wall finding with correct geometry calculations. ， I also implementated sector-based laser analysis approach just like the task autonomous_exploration.py , which divides the 360° laser scan into 6 sectors.
+ This method uses the sector-based approach adapted for 360° laser coverage, dividing the full laser scan into sectors for obstacle detection and wall finding with correct geometry calculations. I also implementated sector-based laser analysis approach just like the task autonomous_exploration.py , which divides the 360° laser scan into 6 sectors.
+it's better to first clean the data and filter the invalid data out, and another way to improve the precision and stability is to Calculate average distance over a window of laser points, This reduces noise
 
 To investigate specific scan data, run `rostopic echo /scan/ranges[100] --field ranges`. The `ranges` array contains distance detection data, where each value represents the sensor’s reading in a specific direction. For example, this could represent the distance to the wall on the right-hand side. You can also visualize this graphically using `rqt_plot /scan/ranges[100]`.
 
