@@ -142,3 +142,4 @@ The code is organized into logical sections that mirror the robot's operational 
 
 
 
+i Design the structure of the control logic, and fill in the details with the helpof ChatGPT 
