@@ -13,10 +13,12 @@ Back: 540
 ---
 
 this works perfect:
+```
     test_front = angle_to_index(180)    # Should be ~358 for angle_min=-3.12
     test_right = angle_to_index(0)   # Should be ~179 for angle_min=-3.12  
     test_back = angle_to_index(540)   # Should be ~0 for angle_min=-3.12
     test_left = angle_to_index(360)   # Should be ~537 for angle_min=-3.12
+```
 
         "Right": (angle_to_index(0), angle_to_index(40)),           # Right side wall (90° ± 20°)
         "Front_Right": (angle_to_index(-50), angle_to_index(0)),      # Front-right area
