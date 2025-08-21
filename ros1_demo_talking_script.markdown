@@ -104,8 +104,6 @@ This ROS1 node provides a robust wall-finding service that enables a robot to lo
 - Laser-guided control loops with continuous feedback
 - Correct geometry calculations for any laser configuration
 - Wrap-around handling for rear sector analysis
-- Condition-based movement with safety timeouts
-- Production-tested control algorithms
 
 ---
 # ROS1 Wall Follower Client Node - Comprehensive Production Implementation
