@@ -30,7 +30,8 @@ Let’s use `rqt_graph` to view the nodes and their topic connections graphicall
 Now, let’s check the topics from the command line using `ros2 topic list` and `ros2 topic info`. These align with the `rqt_graph`. In ROS2, there are multiple ways to do things, and you can use different tools to get basic information.
 
 ## Interpreting Laser Scan Data
-One critical task in this program is correctly interpreting the laser scan data. Run `ros2 topic echo /scan` to see the laser scan message structure. The TurtleBot’s geometry parameters range from -180° to +180°, unlike the Gazebo simulator robot, which ranges from 0° to 360°.
+One critical task in this program is correctly interpreting the laser scan data. Run `ros2 topic echo /scan` to see the laser scan message structure. The TurtleBot’s geometry parameters range from -180° to +180°, unlike the Gazebo simulator robot, which ranges from 0° to 360°. it's better to first clean the data and filter the invalid data out, and another way to improve the precision and stability is to Calculate average distance over a window of laser points, This reduces noise 
+
 
 ## Recording and Replaying Data with ros2 bag
 In ROS2, there’s no `rqt_console` or `rqt_plot`. Instead, it’s better to record a `ros2 bag` to work with data. Run `ros2 bag record -a` to record all topics, or `ros2 bag record /scan > scan.csv` to record a specific topic and export it to a CSV file for further analysis.
