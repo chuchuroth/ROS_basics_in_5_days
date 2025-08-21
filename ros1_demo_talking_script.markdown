@@ -66,6 +66,7 @@ angle_min: -3.1241390705108643  # ≈ -179°
 angle_max: 3.1415927410125732   # ≈ +180°
 angle_increment: 0.008714509196579456  # ≈ 0.5°
 ```
+ I also implementated sector-based laser analysis approach just like the task autonomous_exploration.py , which divides the 360° laser scan into 6 sectors.
 
 To investigate specific scan data, run `rostopic echo /scan/ranges[100] --field ranges`. The `ranges` array contains distance detection data, where each value represents the sensor’s reading in a specific direction. For example, this could represent the distance to the wall on the right-hand side. You can also visualize this graphically using `rqt_plot /scan/ranges[100]`.
 
